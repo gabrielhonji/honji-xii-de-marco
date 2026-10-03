@@ -10,6 +10,8 @@ Aplique o mesmo Giro no header, no hero, no favicon, nos ícones de tela inicial
 
 A marca permanece como padrão do produto, independentemente de armazenamento local. `/identidade` é um guia da marca aprovada, com download do símbolo, sem seletor de alternativas.
 
+O favicon usa uma base circular bordô com cantos externos transparentes, nas versões SVG e ICO. O Giro continua com a geometria original. Ícones de tela inicial mantêm a superfície completa para receber a máscara do sistema operacional.
+
 ## Base editorial compartilhada
 
 Papel/creme, grade leve, títulos grandes, destaques em serifa, tipografia de apoio sem serifa, espaço generoso e numeração discreta. HONJI aparece sem subtítulo genérico no lettering. Cada projeto pode adaptar paleta e conteúdo, preservando Giro, padrão de nomes e crédito do autor.

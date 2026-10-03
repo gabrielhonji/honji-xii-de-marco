@@ -47,11 +47,14 @@ icon = Image.new('RGB', (2048, 2048), WINE)
 draw_giro(icon, 256, 256, 1536, CREAM)
 for name, size in [('apple-touch-icon.png', 180), ('icon-192.png', 192), ('icon-512.png', 512)]:
     icon.resize((size, size), Image.Resampling.LANCZOS).save(OUT / name)
-icon.save(OUT / 'favicon.ico', format='ICO', sizes=[(16, 16), (32, 32), (48, 48), (64, 64)])
+favicon = Image.new('RGBA', (2048, 2048), (0, 0, 0, 0))
+ImageDraw.Draw(favicon).ellipse((0, 0, 2047, 2047), fill=WINE)
+draw_giro(favicon, 256, 256, 1536, CREAM)
+favicon.save(OUT / 'favicon.ico', format='ICO', sizes=[(16, 16), (32, 32), (48, 48), (64, 64)])
 symbol = (OUT / 'honji-symbol.svg').read_text(encoding='utf-8')
 start, end = symbol.index('<g id="mark"'), symbol.rindex('</g>') + 4
 mark = symbol[start:end].replace('fill="currentColor"', 'fill="#F8F4ED"')
-(OUT / 'favicon.svg').write_text('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><title>HONJI</title><rect width="64" height="64" rx="12" fill="#761B35"/><g transform="translate(8 8) scale(.75)">' + mark + '</g></svg>\n', encoding='utf-8')
+(OUT / 'favicon.svg').write_text('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><title>HONJI</title><circle cx="32" cy="32" r="32" fill="#761B35"/><g transform="translate(8 8) scale(.75)">' + mark + '</g></svg>\n', encoding='utf-8')
 
 card = Image.new('RGB', (2400, 1260), CREAM)
 draw = ImageDraw.Draw(card)

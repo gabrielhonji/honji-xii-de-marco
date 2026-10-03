@@ -1,0 +1,37 @@
+name: Verificação da versão
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Instalar dependências Python
+        run: python -m pip install -r requirements-dev.txt
+      - name: Verificar arquivos públicos
+        run: python tools/check_public_data.py --ref HEAD
+      - name: Testar importação e geração
+        run: python -m unittest discover -s tests -v
+      - name: Instalar pnpm
+        run: npm install --global pnpm@11.19.0
+      - name: Compilar interface
+        working-directory: frontend
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build

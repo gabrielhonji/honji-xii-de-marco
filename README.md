@@ -4,6 +4,8 @@ Secretaria digital da Atlética XII de Março, da UTFPR Campus Apucarana. Uma ap
 
 Desenvolvido por **[gabriel.honji](https://github.com/gabrielhonji)** · [Instagram](https://www.instagram.com/gabriel.honji/)
 
+**Versão 1.0.0** · [Release e download](https://github.com/gabrielhonji/honji-xii-de-marco/releases/tag/v1.0.0) · [Histórico de versões](CHANGELOG.md) · Aplicação local
+
 ![HONJI — XII de Março](assets/social-card.png)
 
 ## Funcionalidades
@@ -161,7 +163,7 @@ Antes de hospedar, configure o domínio absoluto de `og:image` no HTML para perm
 .venv\Scripts\python -m unittest discover -s tests -v
 ```
 
-São 30 testes de períodos, ambiguidades, padronização, duplicatas, aprovação, validações HTTP, privacidade dos arquivos, conteúdo dos PDFs e nomes sem sobrescrita. Incluem um lote de 75 certificados e a equivalência CSV/XLSX com dados fictícios. Todos os testes usam dados fictícios.
+São 32 testes de períodos, ambiguidades, padronização, duplicatas, aprovação, validações HTTP, privacidade dos arquivos, conteúdo dos PDFs e nomes sem sobrescrita. Incluem um lote de 75 certificados e a equivalência CSV/XLSX com dados fictícios. Todos os testes usam dados fictícios. O GitHub Actions executa a suíte, a verificação dos arquivos públicos e o build da interface.
 
 Antes de publicar, confira o conjunto completo preparado para o commit:
 
@@ -179,7 +181,7 @@ git config core.hooksPath .githooks
 
 O hook de push verifica todo o histórico que será enviado. Publicações realizadas por outros clientes ou pela API também precisam executar a verificação previamente.
 
-Para experimentar, importe [a planilha fictícia](outputs/honji-qa-20261003/participacoes-ficticias.xlsx) ou [o CSV correspondente](tests/fixtures/participacoes-ficticias.csv). São 14 respostas: 31 participações propostas, 12 pendências, 19 registros sem pendência e 5 duplicatas removidas. Todos os dados dessa amostra são fictícios. A aba **Guia** explica os casos e resultados esperados.
+Para experimentar, importe [a planilha fictícia](outputs/honji-qa-20261003/participacoes-ficticias.xlsx) ou [o CSV correspondente](tests/fixtures/participacoes-ficticias.csv). São 14 respostas: 31 participações propostas, 12 pendências, 19 registros sem pendência e 5 alternativas duplicadas disponíveis para comparação. Todos os dados dessa amostra são fictícios. A aba **Guia** explica os casos e resultados esperados.
 
 [QA.md](QA.md) registra o escopo da verificação e as limitações dos testes em dispositivos.
 

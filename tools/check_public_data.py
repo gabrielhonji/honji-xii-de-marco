@@ -5,7 +5,8 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 GIT=['git','-c','safe.directory='+ROOT.as_posix()]
 PUBLIC_DIRS={'assets','web','tools','tests','outputs','.githooks','frontend'}
-PUBLIC_ROOT={'.gitignore','.gitattributes','AGENTS.md','DESIGN.md','README.md','QA.md','requirements.txt','requirements-dev.txt','server.py'}
+PUBLIC_ROOT={'.gitignore','.gitattributes','AGENTS.md','DESIGN.md','README.md','QA.md','CHANGELOG.md','requirements.txt','requirements-dev.txt','server.py'}
+PUBLIC_WORKFLOWS={'.github/workflows/ci.yml'}
 BRAND_BINARY={'assets/favicon.ico','assets/apple-touch-icon.png','assets/icon-192.png','assets/icon-512.png','assets/social-card.png'}
 
 def normalize(value):
@@ -33,7 +34,7 @@ def check(entries):
         parts=Path(path).parts
         if 'node_modules' in parts or '.env' in parts or path.endswith('.map'):
             failures.append((path,'dependência, configuração privada ou sourcemap não permitido'));continue
-        if (len(parts)==1 and path not in PUBLIC_ROOT) or (len(parts)>1 and parts[0] not in PUBLIC_DIRS):
+        if path not in PUBLIC_WORKFLOWS and ((len(parts)==1 and path not in PUBLIC_ROOT) or (len(parts)>1 and parts[0] not in PUBLIC_DIRS)):
             failures.append((path,'caminho fora da lista pública'));continue
         suffix=Path(path).suffix.lower()
         if suffix in {'.pdf','.zip','.jpg','.jpeg','.ndjson'}:

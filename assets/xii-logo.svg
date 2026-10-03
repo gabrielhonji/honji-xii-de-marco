@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 120" fill="none">
+  <title>XII de Março — Secretaria</title>
+  <rect width="120" height="120" rx="24" fill="#761B35"/>
+  <path d="M27 26 45 33Q60 27 75 33L93 26 90 51Q101 67 85 85L60 104 35 85Q19 67 30 51Z" fill="#221519" stroke="#DAB465" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="m30 29 11 10-9 6Zm60 0L79 39l9 6Z" fill="#DAB465"/>
+  <path d="m34 54 19 5-8 6-11-4Zm52 0L67 59l8 6 11-4Z" fill="#DAB465"/>
+  <path d="m53 71 7-4 7 4-7 7Z" fill="#F8F4ED"/>
+  <path d="M60 78v8m0 0-12-6m12 6 12-6M35 71l12 3m-9 5 10-1m37-7-12 3m9 5-10-1" stroke="#DAB465" stroke-width="2" stroke-linecap="round"/>
+  <path d="m48 87 12 8 12-8" stroke="#F8F4ED" stroke-width="2" stroke-linecap="round"/>
+  <path d="M49 17h4m5 0h4m5 0h4" stroke="#DAB465" stroke-width="2"/>
+  <text x="144" y="75" fill="#761B35" font-family="Georgia,serif" font-size="78" font-weight="bold" letter-spacing="-5">XII</text>
+  <text x="147" y="101" fill="#761B35" font-family="Arial,sans-serif" font-size="13" letter-spacing="4">DE MARÇO</text>
+</svg>

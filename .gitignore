@@ -1,0 +1,11 @@
+__pycache__/
+.venv/
+tmp/
+output/
+documentos-certificados/
+private/
+*.pdf
+*.zip
+.env
+.env.*
+!.env.example

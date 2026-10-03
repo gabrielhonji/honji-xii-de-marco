@@ -1,0 +1,13 @@
+.git
+.github
+.githooks
+.venv
+__pycache__
+frontend
+outputs
+tests
+tools
+*.pdf
+*.zip
+.env
+.env.*

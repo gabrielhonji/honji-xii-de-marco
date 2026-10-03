@@ -3,14 +3,26 @@ from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from io import BytesIO, StringIO
 from datetime import date
+from urllib.parse import urlsplit
 from xml.sax.saxutils import escape
 import base64, csv, json, re, unicodedata, zipfile, argparse, math
 from reportlab.pdfgen import canvas
 from reportlab.platypus import Paragraph
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.colors import white, HexColor
+from reportlab.lib.utils import ImageReader
+from pypdf import PdfReader, PdfWriter
 
 ROOT = Path(__file__).resolve().parent
+PRIVATE_TEMPLATE_PATH = ROOT/'documentos-certificados/certificate-background.jpg'
+
+def private_template_pdf():
+    if not PRIVATE_TEMPLATE_PATH.is_file(): return None
+    stream=BytesIO(); pdf=canvas.Canvas(stream,pagesize=(842,595))
+    pdf.drawImage(ImageReader(str(PRIVATE_TEMPLATE_PATH)),0,0,842,595)
+    pdf.showPage(); pdf.save(); return stream.getvalue()
+
+PRIVATE_TEMPLATE_PDF = private_template_pdf()
 ACTIVITIES = {'XII': 'Membro da Atlética XII de Março', 'Atleta': 'Atleta da XII de Março', 'Hunter': 'Hunter E-sports', 'TOC': 'Torcida Organizada Caçadores', 'Pantercats': 'Cheerleaders Pantercats', 'Panterada': 'Bateria Panterada', 'EP': 'Engenharíadas Paranaense', 'JIA': 'Jogos Interatléticas', 'Evento': 'Evento esportivo', 'Social': 'Ação social'}
 
 def split_participations(source):
@@ -211,10 +223,7 @@ def certificate(record, issued):
     issued = date.fromisoformat(issued)
     stream = BytesIO(); w,h=842,595
     pdf = canvas.Canvas(stream,pagesize=(w,h)); pdf.setTitle(f"{record['name']} - {record['activity']} - {record['semester']}")
-    private_template=ROOT/'documentos-certificados/certificate-background.jpg'
-    if private_template.is_file():
-        pdf.drawImage(str(private_template),0,0,w,h)
-    else:
+    if not PRIVATE_TEMPLATE_PDF:
         pdf.setFillColor(HexColor('#761b35'));pdf.rect(0,0,w,h,fill=1,stroke=0)
         pdf.setStrokeColor(HexColor('#d8b366'));pdf.setLineWidth(1.5);pdf.rect(24,24,w-48,h-48,stroke=1,fill=0)
         pdf.setFillColor(white);pdf.setFont('Helvetica-Bold',16);pdf.drawCentredString(w/2,535,'ATLÉTICA XII DE MARÇO')
@@ -239,24 +248,33 @@ def certificate(record, issued):
         style.fontSize-=1; style.leading-=1; paragraph=Paragraph(text,style); pw,ph=paragraph.wrap(750,235)
     if ph>230: raise ValueError('Texto muito longo para o modelo. Encurte a descrição.')
     paragraph.drawOn(pdf,46,390-ph)
-    pdf.showPage(); pdf.save(); return stream.getvalue()
+    pdf.showPage(); pdf.save()
+    if not PRIVATE_TEMPLATE_PDF: return stream.getvalue()
+    writer=PdfWriter(clone_from=BytesIO(PRIVATE_TEMPLATE_PDF))
+    writer.pages[0].merge_page(PdfReader(BytesIO(stream.getvalue())).pages[0])
+    writer.add_metadata({'/Title':f"{record['name']} - {record['activity']} - {record['semester']}"})
+    output=BytesIO(); writer.write(output); return output.getvalue()
 
 def slug(value):
     return re.sub(r'[^a-zA-Z0-9._-]+','-',norm(value)).strip('-.')[:100] or 'certificado'
 
-def make_zip(records, issued, naming):
+def validate_batch(records, issued, naming):
     if naming not in {'name','ra'}: raise ValueError('Escolha nomes por pessoa ou RA.')
     if not records or len(records)>1000: raise ValueError('Selecione de 1 a 1.000 certificados.')
+    date.fromisoformat(issued)
     identities=set()
     for record in records:
         validate_record(record)
         key=(record['ra'],norm(record['name']),record['activity'],record['semester'],norm(canonical_detail(record['activity'],record['detail'])))
         if key in identities:raise ValueError('Há participações repetidas no lote. Revise as duplicatas antes de emitir.')
         identities.add(key)
-    stream=BytesIO(); manifest=[]; filenames=set()
-    with zipfile.ZipFile(stream,'w',zipfile.ZIP_DEFLATED) as archive:
+        if record.get('warning'): raise ValueError('Resolva as pendências antes de emitir.')
+
+def write_zip(destination, records, issued, naming):
+    validate_batch(records,issued,naming)
+    manifest=[]; filenames=set()
+    with zipfile.ZipFile(destination,'w',zipfile.ZIP_DEFLATED) as archive:
         for r in records:
-            if r.get('warning'): raise ValueError('Resolva as pendências antes de emitir.')
             body=certificate(r,issued)
             prefix=slug(r['ra'] if naming=='ra' else r['name'])
             folder=f'{prefix}/'; base=f'{prefix} - {slug(r["activity"])} - {r["semester"]}'
@@ -268,7 +286,20 @@ def make_zip(records, issued, naming):
         # Neutralize spreadsheet formula injection in the audit file.
         writer.writerows({k:("'"+str(v) if str(v).lstrip().startswith(('=','+','-','@')) or str(v).startswith(('\t','\r')) else v) for k,v in m.items()} for m in manifest)
         archive.writestr('relatorio.csv',output.getvalue().encode('utf-8-sig'))
+    return destination
+
+def make_zip(records, issued, naming):
+    stream=BytesIO(); write_zip(stream,records,issued,naming)
     return stream.getvalue()
+
+class StreamingWriter:
+    """Non-seekable ZIP destination that flushes progress through the proxy."""
+    def __init__(self, raw): self.raw=raw; self.position=0
+    def write(self, data):
+        written=self.raw.write(data); self.raw.flush(); self.position+=written
+        return written
+    def tell(self): return self.position
+    def flush(self): self.raw.flush()
 
 class Handler(BaseHTTPRequestHandler):
     def log_message(self,*args): pass
@@ -278,7 +309,16 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('Cache-Control','no-store'); self.send_header('X-Content-Type-Options','nosniff')
         self.send_header('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob:; frame-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
         self.end_headers(); self.wfile.write(body)
+    def reply_zip(self,records,issued,naming):
+        validate_batch(records,issued,naming)
+        self.send_response(200); self.send_header('Content-Type','application/zip')
+        self.send_header('Cache-Control','no-store'); self.send_header('X-Content-Type-Options','nosniff')
+        self.send_header('Content-Disposition','attachment; filename="XII-certificados.zip"')
+        self.send_header('Connection','close'); self.end_headers(); self.close_connection=True
+        write_zip(StreamingWriter(self.wfile),records,issued,naming)
     def do_GET(self):
+        if self.path.split('?')[0] == '/healthz':
+            return self.reply({'status':'ok'})
         paths={'/':('web/dist/index.html','text/html; charset=utf-8'),'/style.css':('web/style.css','text/css; charset=utf-8'),'/responsive.css':('web/responsive.css','text/css; charset=utf-8')}
         # Serve only compiled public assets, never arbitrary frontend source paths.
         for asset in (ROOT/'web/dist/static').glob('*'):
@@ -298,14 +338,21 @@ class Handler(BaseHTTPRequestHandler):
         self.reply((ROOT/path).read_bytes(),kind)
     def do_POST(self):
         try:
-            # Reject cross-origin requests and DNS rebinding against the local service.
+            # Reject cross-origin requests and DNS rebinding against both local
+            # development and the explicitly configured production origin.
             host=self.headers.get('Host',''); origin=self.headers.get('Origin')
             length=int(self.headers.get('Content-Length','0'))
             if not 0 < length <= 15_000_000: raise ValueError('Limite de upload: 10 MB.')
             # Consume the bounded body before replying so Windows clients do not
             # receive a connection reset instead of the validation response.
             body=self.rfile.read(length)
-            if host not in {f'127.0.0.1:{self.server.server_port}',f'localhost:{self.server.server_port}'} or (origin and origin not in {f'http://{host}'}): return self.reply({'error':'Origem não permitida'},status=403)
+            public_origin=getattr(self.server,'public_origin',None)
+            if public_origin:
+                allowed_hosts={urlsplit(public_origin).netloc}; allowed_origins={public_origin}
+            else:
+                allowed_hosts={f'127.0.0.1:{self.server.server_port}',f'localhost:{self.server.server_port}'}
+                allowed_origins={f'http://{allowed_host}' for allowed_host in allowed_hosts}
+            if host not in allowed_hosts or (origin and origin not in allowed_origins): return self.reply({'error':'Origem não permitida'},status=403)
             payload=json.loads(body)
             if self.path=='/api/analyze':
                 data=base64.b64decode(payload['data'],validate=True)
@@ -322,15 +369,25 @@ class Handler(BaseHTTPRequestHandler):
                     detail=canonical_detail(record['activity'],record['detail']);changed+=detail!=record['detail']
                     result.append({**record,'detail':detail})
                 return self.reply({'records':result,'changed':changed})
-            if self.path=='/api/generate': return self.reply(make_zip(payload['records'],payload['issued'],payload.get('naming','name')),'application/zip')
+            if self.path=='/api/generate': return self.reply_zip(payload['records'],payload['issued'],payload.get('naming','name'))
             return self.reply({'error':'Não encontrado'},status=404)
         except ValueError as error: self.reply({'error':str(error) or 'Dados inválidos. Confira os campos preenchidos.'},status=400)
         except (KeyError,TypeError,csv.Error,zipfile.BadZipFile): self.reply({'error':'Dados inválidos. Confira o arquivo e os campos preenchidos.'},status=400)
         except Exception: self.reply({'error':'Não foi possível processar o arquivo. Confira o formato e tente novamente.'},status=400)
 
 if __name__=='__main__':
-    parser=argparse.ArgumentParser(); parser.add_argument('--port',type=int,default=8000); args=parser.parse_args()
-    server=ThreadingHTTPServer(('127.0.0.1',args.port),Handler)
-    print(f'XII Certificados: http://127.0.0.1:{args.port}',flush=True)
+    parser=argparse.ArgumentParser()
+    parser.add_argument('--host',default='127.0.0.1')
+    parser.add_argument('--port',type=int,default=8000)
+    parser.add_argument('--public-origin')
+    args=parser.parse_args()
+    if args.public_origin:
+        parsed=urlsplit(args.public_origin)
+        if parsed.scheme not in {'http','https'} or not parsed.netloc or parsed.path not in {'','/'} or parsed.query or parsed.fragment:
+            parser.error('--public-origin deve conter apenas esquema e host, por exemplo https://app.example.com')
+        args.public_origin=args.public_origin.rstrip('/')
+    server=ThreadingHTTPServer((args.host,args.port),Handler)
+    server.public_origin=args.public_origin
+    print(f'XII Certificados: {args.public_origin or f"http://{args.host}:{args.port}"}',flush=True)
     try: server.serve_forever()
     except KeyboardInterrupt: server.server_close()

@@ -194,7 +194,7 @@ class HttpRegressionTest(unittest.TestCase):
         except urllib.error.HTTPError as error:return error
 
     def test_public_assets_and_private_files(self):
-        for path in ['/','/assets/honji-symbol.svg','/assets/xii-icon.svg','/assets/favicon.svg','/site.webmanifest']:
+        for path in ['/','/healthz','/assets/honji-symbol.svg','/assets/xii-icon.svg','/assets/favicon.svg','/site.webmanifest']:
             response=self.request(path);self.assertEqual(response.status,200,path);self.assertEqual(response.headers['Cache-Control'],'no-store')
         import re
         html=self.request('/').read().decode()
@@ -207,6 +207,17 @@ class HttpRegressionTest(unittest.TestCase):
     def test_origin_and_host_checks(self):
         self.assertEqual(self.request('/api/analyze',{}, {'Origin':'https://example.invalid'}).status,403)
         self.assertEqual(self.request('/api/analyze',{}, {'Host':'example.invalid'}).status,403)
+
+    def test_explicit_public_origin(self):
+        self.server.public_origin='https://xii-gabriel.honji.com.br'
+        try:
+            headers={'Host':'xii-gabriel.honji.com.br','Origin':'https://xii-gabriel.honji.com.br'}
+            response=self.request('/api/analyze',{},headers)
+            self.assertEqual(response.status,400)
+            self.assertNotEqual(json.load(response).get('error'),'Origem não permitida')
+            self.assertEqual(self.request('/api/analyze',{}, {'Host':'xii-gabriel.honji.com.br','Origin':'https://example.invalid'}).status,403)
+        finally:
+            self.server.public_origin=None
 
     def test_http_import_preview_export_and_clear_validation_errors(self):
         response=self.request('/api/analyze',{'filename':CSV.name,'data':base64.b64encode(CSV.read_bytes()).decode()})

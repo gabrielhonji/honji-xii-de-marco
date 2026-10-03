@@ -11,9 +11,10 @@ Desenvolvido por **[gabriel.honji](https://github.com/gabrielhonji)** · [Instag
 - Importação de CSV e XLSX no formato original do formulário.
 - Expansão de intervalos explícitos em semestres, incluindo início e fim.
 - Revisão de nome, RA, atividade, função, período e carga horária.
-- Identificação de respostas ambíguas e remoção de duplicatas idênticas.
+- Identificação de respostas ambíguas e comparação de respostas duplicadas, com escolha da versão que fica no lote.
+- Ordenação por revisão, semestre, atividade, participante e emissão; paginação de 10, 25 ou 50 registros.
 - Aprovação individual ou em lote dos registros sem pendência.
-- Prévia de certificados com o fundo institucional original.
+- Prévia de certificados com modelo neutro na distribuição pública e template autorizado configurável no ambiente local.
 - Exportação de PDFs em ZIP, por nome ou RA, com relatório de conferência.
 - Temas claro e escuro com preferência lembrada no navegador.
 - Seletores com opções no tema HONJI e navegação por teclado; tooltips de ações e atalhos.

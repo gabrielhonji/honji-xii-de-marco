@@ -7,6 +7,8 @@ import { Icon } from "./Icons";
 
 interface Props {
   records: Participation[];
+  duplicates: number;
+  onReviewDuplicates: () => void;
   filename: string;
   busy: boolean;
   issued: string;
@@ -27,6 +29,10 @@ export function Review(props: Props) {
   const { records, busy } = props;
   const [query, setQuery] = useState(""),
     [filter, setFilter] = useState("all");
+  const [sort, setSort] = useState<string | null>(null);
+  const [descending, setDescending] = useState(false);
+  const [page, setPage] = useState(1), [pageSize, setPageSize] = useState("10");
+  const reviewRank = (r: Participation) => r.warning || !valid(r) ? 0 : r.approved ? 2 : 1;
   const approved = records.filter(
     (r) => r.approved && valid(r) && !r.warning,
   ).length;
@@ -37,9 +43,23 @@ export function Review(props: Props) {
           fold(`${r.name} ${r.ra}`).includes(fold(query)) &&
           (filter !== "pending" || r.warning || !valid(r)) &&
           (filter !== "approved" || r.approved),
-      ),
-    [records, query, filter],
+      ).sort((a, b) => {
+        if (!sort) return 0;
+        const left = sort === "review" ? reviewRank(a) : sort === "issue" ? Number(a.approved) : sort === "activity" ? activities[a.activity] : sort === "semester" ? a.semester : a.name;
+        const right = sort === "review" ? reviewRank(b) : sort === "issue" ? Number(b.approved) : sort === "activity" ? activities[b.activity] : sort === "semester" ? b.semester : b.name;
+        const comparison = typeof left === "number" && typeof right === "number" ? left - right : String(left).localeCompare(String(right), "pt-BR", { numeric: true, sensitivity: "base" });
+        return descending ? -comparison : comparison;
+      }),
+    [records, query, filter, sort, descending],
   );
+  const pages = Math.max(1, Math.ceil(visible.length / Number(pageSize)));
+  const currentPage = Math.min(page, pages);
+  const offset = (currentPage - 1) * Number(pageSize);
+  function order(column: string) {
+    setDescending(sort === column ? !descending : false);
+    setSort(column);
+    setPage(1);
+  }
   return (
     <section id="review">
       <div className="stats">
@@ -66,14 +86,6 @@ export function Review(props: Props) {
           </span>
           <h2>Confira antes de emitir.</h2>
         </div>
-        <Button
-          id="approve-ready"
-          tooltip="Aprovar somente registros válidos e sem pendência."
-          disabled={busy}
-          onClick={props.onApproveReady}
-        >
-          Aprovar registros sem pendência
-        </Button>
       </div>
       <div className="toolbar">
         <input
@@ -81,19 +93,24 @@ export function Review(props: Props) {
           placeholder="Buscar nome ou RA"
           aria-label="Buscar nome ou RA"
           value={query}
-          onChange={(event) => setQuery(event.target.value)}
+          onChange={(event) => { setQuery(event.target.value); setPage(1); }}
         />
         <Select
           id="filter"
           label="Filtrar situação"
           value={filter}
-          onChange={setFilter}
+          onChange={(value) => { setFilter(value); setPage(1); }}
           options={[
             { value: "all", label: "Todas as participações" },
             { value: "pending", label: "Com pendência" },
             { value: "approved", label: "Aprovadas" },
           ]}
         />
+      </div>
+      <div className="toolbar review-actions">
+        <Button id="approve-ready" tooltip="Aprovar somente registros válidos e sem pendência." disabled={busy} onClick={props.onApproveReady}>
+          Aprovar registros sem pendência
+        </Button>
         <Button
           id="normalize"
           tooltip="Unificar descrições sem alterar horas ou semestres."
@@ -102,6 +119,9 @@ export function Review(props: Props) {
         >
           Padronizar descrições
         </Button>
+        {props.duplicates > 0 && <Button id="review-duplicates" disabled={busy} onClick={props.onReviewDuplicates} tooltip="Comparar respostas repetidas e escolher qual versão deve ficar no lote.">
+          Comparar duplicatas ({props.duplicates})
+        </Button>}
         <Button
           id="add"
           tooltip="Adicionar uma participação manualmente."
@@ -115,25 +135,35 @@ export function Review(props: Props) {
         Revise também os registros reconhecidos automaticamente. Horas e
         períodos são editáveis. Anos sem semestre e eventos exigem confirmação.
       </p>
+      <div className="mobile-sort">
+        <Select id="mobile-order" label="Ordenar participações" value={sort || "original"} onChange={(value) => { setSort(value === "original" ? null : value); setDescending(false); setPage(1); }} options={[
+          {value:"original",label:"Ordem da importação"}, {value:"review",label:"Ordenar por revisão"},
+          {value:"semester",label:"Ordenar por semestre"}, {value:"activity",label:"Ordenar por atividade"},
+          {value:"name",label:"Ordenar por participante"}, {value:"issue",label:"Ordenar por emissão"},
+        ]} />
+        <Button disabled={!sort} onClick={() => { setDescending(!descending); setPage(1); }} tooltip="Inverter a ordem das participações.">{descending ? "Decrescente ↓" : "Crescente ↑"}</Button>
+      </div>
       <div className="table-wrap">
         <table>
           <thead>
             <tr>
               {[
-                "EMITIR",
-                "PARTICIPANTE / RA",
-                "ATIVIDADE",
-                "SEMESTRE",
-                "HORAS",
-                "REVISÃO",
-                "AÇÕES",
-              ].map((label) => (
-                <th key={label}>{label}</th>
+                ["EMITIR", "issue"],
+                ["PARTICIPANTE / RA", "name"],
+                ["ATIVIDADE", "activity"],
+                ["SEMESTRE", "semester"],
+                ["HORAS", ""],
+                ["REVISÃO", "review"],
+                ["AÇÕES", ""],
+              ].map(([label, column]) => (
+                <th key={label} aria-sort={column && sort === column ? descending ? "descending" : "ascending" : column ? "none" : undefined}>
+                  {column ? <Tooltip text={`Ordenar por ${label.toLocaleLowerCase("pt-BR")}. Clique novamente para inverter.`}><button className="sort-heading" onClick={() => order(column)}>{label}<span aria-hidden="true">{sort === column ? descending ? "↓" : "↑" : "↕"}</span></button></Tooltip> : label}
+                </th>
               ))}
             </tr>
           </thead>
           <tbody id="rows">
-            {visible.map((r) => (
+            {visible.slice(offset, offset + Number(pageSize)).map((r) => (
               <tr key={r.id}>
                 <td data-label="Emitir">
                   <label className="row-selection">
@@ -212,6 +242,15 @@ export function Review(props: Props) {
             )}
           </tbody>
         </table>
+      </div>
+      <div className="pagination-bar">
+        <span role="status">{visible.length ? `${offset + 1}–${Math.min(offset + Number(pageSize), visible.length)} de ${visible.length}` : "0 participações"}</span>
+        <Select id="page-size" label="Participações por página" value={pageSize} onChange={(value) => { setPageSize(value); setPage(1); }} options={[{value:"10",label:"10 por página"},{value:"25",label:"25 por página"},{value:"50",label:"50 por página"}]} />
+        <nav className="pagination" aria-label="Páginas da revisão">
+          <Button disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)} tooltip="Ver a página anterior da revisão.">Anterior</Button>
+          <span>Página {currentPage} de {pages}</span>
+          <Button disabled={currentPage === pages} onClick={() => setPage(currentPage + 1)} tooltip="Ver a próxima página da revisão.">Próxima</Button>
+        </nav>
       </div>
       <div className="export">
         <div>

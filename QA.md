@@ -51,3 +51,11 @@ Campos de texto e seletores compartilham altura de 44 px, padding e fonte de 13 
 ## Medição de geração
 
 Em uma execução neste computador, com identidades exclusivamente fictícias, template neutro e geração sequencial em memória: 100 PDFs com ZIP em 0,214 s (0,161 MB); 1.000 em 2,134 s (1,610 MB). A contagem dos PDFs no ZIP foi conferida. A medição não inclui rede, template com imagem, concorrência ou persistência; não é um teste de 100.000 certificados nem uma comparação com C. O limite continua em 1.000 por emissão.
+
+## Comparação de duplicatas e paginação
+
+A importação mantém as alternativas duplicadas separadas do lote. A comparação exibe resposta de origem, linha, semestre, horas e pendências. Trocar a versão preserva a anterior como alternativa e exige nova aprovação; duplicatas idênticas continuam bloqueadas na geração. Há testes para preservação da origem, conflitos de horas e equivalência CSV/XLSX com alternativas.
+
+Os 32 testes automatizados passaram. O build de produção e a verificação de tipos passaram. No navegador, foram conferidos troca de versões e retorno à original, aprovação de 19 registros sem pendência, as cinco ordenações nos dois sentidos, páginas de 10/25 registros, última página com um registro e busca reiniciando a paginação. A revisão mantém apenas dez participações por padrão e a aprovação em lote integra a barra de ações.
+
+No viewport móvel, o seletor de ordenação e a inversão de sentido funcionaram, a comparação passou a uma coluna e a largura de rolagem do documento coincidiu com a largura útil. O viewport normal foi restaurado. Todos os testes utilizaram identidades fictícias.

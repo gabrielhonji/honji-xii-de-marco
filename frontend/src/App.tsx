@@ -6,12 +6,14 @@ import {
   participationKey,
   valid,
   type Participation,
+  type DuplicateParticipation,
 } from "./model";
 import { useTheme } from "./hooks/useTheme";
 import { Header, Hero, Footer, Upload } from "./components/Layout";
 import { Review } from "./components/Review";
 import { Editor } from "./components/Editor";
 import { Dialog } from "./components/Dialog";
+import { Duplicates } from "./components/Duplicates";
 
 interface Notice {
   text: string;
@@ -21,6 +23,7 @@ interface Analysis {
   records: Participation[];
   responses: number;
   duplicates: number;
+  duplicate_records: DuplicateParticipation[];
 }
 interface Normalized {
   records: Participation[];
@@ -30,6 +33,8 @@ export function App() {
   const { theme, toggle } = useTheme();
   const [records, setRecords] = useState<Participation[]>([]),
     [loaded, setLoaded] = useState(false);
+  const [duplicates, setDuplicates] = useState<DuplicateParticipation[]>([]);
+  const [reviewDuplicates, setReviewDuplicates] = useState(false);
   const [filename, setFilename] = useState(""),
     [status, setStatus] = useState(""),
     [busy, setBusy] = useState(false);
@@ -107,10 +112,12 @@ export function App() {
       lotVersion.current++;
       setNotice(null);
       setRecords(data.records);
+      setDuplicates(data.duplicate_records || []);
+      setReviewDuplicates(false);
       setFilename(file.name);
       setLoaded(true);
       setStatus(
-        `${data.responses} respostas importadas${data.duplicates ? ` · ${data.duplicates} duplicatas removidas` : ""}.`,
+        `${data.responses} respostas importadas${data.duplicates ? ` · ${data.duplicates} duplicatas disponíveis para comparação na revisão` : ""}.`,
       );
       requestAnimationFrame(() =>
         document.getElementById("review")?.scrollIntoView({
@@ -143,6 +150,25 @@ export function App() {
     invalidate();
     setRecords(next);
     return undefined;
+  }
+  function chooseDuplicate(candidate: DuplicateParticipation) {
+    if (busyRef.current) return;
+    const existing = records.find((r) => r.id === candidate.duplicate_of);
+    if (records.some((r) => r.id !== existing?.id && participationKey(r) === participationKey(candidate))) {
+      notify("Esta versão coincide com outra participação do lote. Revise o registro existente.");
+      return;
+    }
+    invalidate();
+    const replacement = { ...candidate, id: existing?.id ?? crypto.randomUUID(), approved: false };
+    setRecords((previous) => existing
+      ? previous.map((r) => r.id === existing.id ? replacement : r)
+      : [...previous, replacement]);
+    setDuplicates((previous) => existing
+      ? previous.map((r) => r.id === candidate.id
+        ? { ...existing, id: candidate.id, duplicate_of: existing.id, approved: false }
+        : r)
+      : previous.filter((r) => r.id !== candidate.id));
+    notify("Versão escolhida para o lote. Confira os dados e aprove antes de emitir.");
   }
   function approve(record: Participation) {
     if (busyRef.current) return;
@@ -305,6 +331,8 @@ export function App() {
             <Review
               key={filename + lotVersion.current}
               records={records}
+              duplicates={duplicates.length}
+              onReviewDuplicates={() => setReviewDuplicates(true)}
               filename={filename}
               busy={busy}
               issued={issued}
@@ -341,6 +369,8 @@ export function App() {
         </section>
       </main>
       <Footer />
+      {reviewDuplicates && <Duplicates records={records} duplicates={duplicates} busy={busy}
+        onChoose={chooseDuplicate} onClose={() => setReviewDuplicates(false)} />}
       {current && (
         <Editor
           key={current.id}

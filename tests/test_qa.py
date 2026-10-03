@@ -59,6 +59,32 @@ class ImportRegressionTest(unittest.TestCase):
         self.assertTrue(XLSX.exists(),'The public fictitious workbook must be included.')
         a=analyze(CSV.name,CSV.read_bytes()); b=analyze(XLSX.name,XLSX.read_bytes())
         self.assertEqual(a['records'],b['records'])
+        self.assertEqual(a['duplicate_records'],b['duplicate_records'])
+
+    def test_duplicate_candidates_preserve_source_and_pending_identity(self):
+        result=analyze(CSV.name,CSV.read_bytes())
+        self.assertEqual(len(result['duplicate_records']),result['duplicates'])
+        originals={r['id']:r for r in result['records']}
+        for candidate in result['duplicate_records']:
+            original=originals[candidate['duplicate_of']]
+            self.assertFalse(candidate['approved'])
+            self.assertTrue(candidate['source'])
+            self.assertTrue(candidate['row'])
+            self.assertNotEqual(candidate['id'],original['id'])
+            self.assertEqual(candidate['warning'],original['warning'])
+            for field in ['name','ra','activity','semester','detail']:
+                self.assertEqual(candidate[field],original[field])
+
+    def test_duplicate_response_keeps_conflicting_hours_warning(self):
+        output=StringIO();writer=csv.writer(output)
+        writer.writerows([['Nome Completo','RA','Se foi atleta/'],
+            ['Participante Fictício','0012345','fut7 2024/1'],
+            ['Participante Fictício','0012345','atleta de Fut7 2024/1 150 horas']])
+        result=analyze('duplicatas-ficticias.csv',output.getvalue().encode())
+        self.assertEqual((len(result['records']),result['duplicates']),(1,1))
+        self.assertFalse(result['records'][0]['warning'])
+        self.assertTrue(result['duplicate_records'][0]['warning'])
+        self.assertIn('150',result['duplicate_records'][0]['source'])
 
     def test_csv_encodings_and_delimiters(self):
         for delimiter,encoding in [(';','cp1252'),('\t','utf-8-sig'),(',','utf-8')]:

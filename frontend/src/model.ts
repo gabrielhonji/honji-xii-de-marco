@@ -12,7 +12,7 @@ export const activities = {
 };
 export type Activity = keyof typeof activities;
 export interface Participation {
-  id: string;
+  id: string | number;
   name: string;
   ra: string;
   activity: Activity;
@@ -23,6 +23,9 @@ export interface Participation {
   warning: string;
   source: string;
   row: number | string;
+}
+export interface DuplicateParticipation extends Participation {
+  duplicate_of: string | number;
 }
 export type Theme = "light" | "dark";
 export const fold = (text: string) =>

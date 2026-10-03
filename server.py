@@ -122,7 +122,7 @@ def rows_from_file(filename, data):
 
 def analyze(filename, data):
     headers, rows = rows_from_file(filename, data)
-    records, seen, duplicates = [], set(), 0
+    records, seen, duplicate_records = [], {}, []
     names_by_ra = {}
     for rownum, row in enumerate(rows, 2):
         if not any(row): continue
@@ -178,19 +178,24 @@ def analyze(filename, data):
                     warning=warning or 'Há mais de uma modalidade na resposta. Separe as participações e confirme cada período.'
                 for semester in semester_list or ['']:
                     key = (ra,norm(name),kind,semester,norm(detail))
-                    if key in seen: duplicates += 1; continue
-                    seen.add(key)
                     field_warning = ''
                     if len(name)>150 or len(detail)>350:
                         field_warning='Nome ou descrição excede o limite do certificado. Revise o texto.'
                     if any(str(v).lstrip().startswith('=') for v in (name,ra,piece)):
                         field_warning='Há uma fórmula na resposta. Substitua por dados confirmados.'
-                    records.append(dict(id=len(records)+1,name=name,ra=ra,activity=kind,detail=detail,semester=semester,hours=hours,source=piece,row=rownum,warning=identity_error or field_warning or warning or '',approved=False))
-    for record in records:
+                    record=dict(id=len(records)+1,name=name,ra=ra,activity=kind,detail=detail,semester=semester,hours=hours,source=piece,row=rownum,warning=identity_error or field_warning or warning or '',approved=False)
+                    if key in seen:
+                        record['id']='duplicate-'+str(len(duplicate_records)+1)
+                        record['duplicate_of']=seen[key]
+                        duplicate_records.append(record)
+                    else:
+                        seen[key]=record['id']
+                        records.append(record)
+    for record in records + duplicate_records:
         if len(names_by_ra[record['ra']])>1:
             record['warning']='O mesmo RA aparece com nomes diferentes. Confirme a identidade e as participações.'
     if not records: raise ValueError('Nenhuma participação encontrada nas colunas do formulário.')
-    return dict(records=records,people=len({r['ra'] for r in records}),responses=len(rows),duplicates=duplicates,filename=filename)
+    return dict(records=records,people=len({r['ra'] for r in records}),responses=len(rows),duplicates=len(duplicate_records),duplicate_records=duplicate_records,filename=filename)
 
 def validate_record(record):
     if not isinstance(record,dict) or record.get('approved') is not True: raise ValueError('Aprove cada certificado antes de gerar.')

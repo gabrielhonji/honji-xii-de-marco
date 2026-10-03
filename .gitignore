@@ -4,6 +4,8 @@ tmp/
 output/
 documentos-certificados/
 private/
+node_modules/
+frontend/.vite/
 *.pdf
 *.zip
 .env

@@ -1,0 +1,186 @@
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+@import "../../web/style.css";
+@import "../../web/responsive.css";
+
+/* The established editorial styles own the base; utilities extend components. */
+#root {
+  min-height: 100svh;
+  min-height: 100dvh;
+}
+@theme {
+  --color-honji-accent: var(--accent);
+  --color-honji-surface: var(--surface);
+}
+
+/* Tooltips stay inside modal top layers and do not change component layout. */
+.tooltip-anchor {
+  display: contents;
+}
+.honji-tooltip {
+  position: fixed;
+  z-index: 500;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: min(240px, calc(100vw - 24px));
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--text);
+  color: var(--bg);
+  box-shadow: 0 4px 16px #0002;
+  font-size: 12px;
+  font-weight: normal;
+  line-height: 1.45;
+  text-align: left;
+  pointer-events: none;
+}
+.honji-tooltip > span {
+  display: block;
+}
+.honji-tooltip kbd {
+  display: block;
+  margin-top: 5px;
+  font: 10px monospace;
+  opacity: 0.75;
+}
+.export-controls input:hover:enabled,
+.export-controls select:hover:enabled {
+  background: var(--surface);
+  border-color: var(--accent);
+}
+.download-result {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.download-result .download-link {
+  min-height: 44px;
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  gap: 7px;
+}
+.download-result .download-link:hover {
+  color: var(--text);
+}
+/* Let the document paint its grid throughout resizing and mobile browser chrome changes. */
+html {
+  background-attachment: scroll;
+}
+body {
+  min-height: 100dvh;
+}
+
+.custom-select {
+  min-width: 0;
+  width: 100%;
+}
+.toolbar .custom-select {
+  flex: 1;
+  min-width: 180px;
+  width: auto;
+}
+.select-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  width: 100%;
+  min-height: 44px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  transition:
+    background 0.16s,
+    border-color 0.16s;
+}
+.select-trigger > span {
+  min-width: 0;
+}
+.select-chevron {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  color: var(--muted);
+}
+.select-trigger:hover:enabled {
+  background: var(--surface-soft);
+  border-color: var(--accent);
+}
+.select-trigger:focus-visible,
+.select-trigger[aria-expanded="true"] {
+  border-color: var(--accent);
+  outline: 2px solid var(--gold);
+  outline-offset: 3px;
+}
+.export-controls .select-trigger:hover:enabled {
+  background: var(--surface);
+}
+.select-trigger:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+.select-options {
+  position: fixed;
+  z-index: 450;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: auto;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  box-shadow: 0 8px 24px #0002;
+}
+.select-options button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border-radius: 3px;
+  text-align: left;
+  white-space: normal;
+  font-size: 13px;
+  color: var(--text);
+  background: transparent;
+  transition:
+    background 0.12s,
+    color 0.12s;
+}
+.select-options button > span { min-width: 0; overflow-wrap: anywhere; }
+.select-options button:hover,
+.select-options button.option-active {
+  background: var(--surface-soft);
+  color: var(--accent);
+}
+.select-options button[aria-selected="true"] {
+  color: var(--accent);
+  font-weight: 600;
+}
+.select-options svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+@media (max-width: 767px) {
+  .select-trigger,
+  .select-options button {
+    font-size: 16px;
+  }
+  .toolbar .custom-select {
+    min-width: 0;
+    flex-basis: 100%;
+  }
+}

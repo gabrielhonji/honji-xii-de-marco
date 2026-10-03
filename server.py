@@ -20,6 +20,9 @@ def split_participations(source):
     cuts = []
     for match in re.finditer(r'(?:[,;\n]+\s*|\s+-\s+|\s+e\s+)(?='+role+r')',source,re.I):
         prefix=source[:match.start()]
+        date_context=re.sub(r'20\d{2}\s*[/.-]\s*0?[12]','',prefix)
+        date_context=re.sub(r'\b(?:ate|até|a|ao|e|de)\b','',date_context,flags=re.I).strip(' ,;:/.-\n')
+        if not date_context:continue
         if prefix.count('(')==prefix.count(')'): cuts.append((match.start(),match.end()))
     pieces=[]; start=0
     for a,b in cuts: pieces.append(source[start:a]); start=b
@@ -30,6 +33,39 @@ def norm(text):
 
 def inactive(text):
     return norm(text) in {'', '.', '-', 'nao', 'nao fui', 'nao me enquadro', 'nao diretamente', 'apenas atleta.'}
+
+def canonical_detail(activity, text):
+    """Normalize explicit aliases without inventing roles, periods or hours."""
+    original=re.sub(r'\s+',' ',str(text)).strip(' ,.;')
+    key=norm(original)
+    if activity=='Atleta':
+        key=re.sub(r'^(?:atleta|jogador(?:a)?)\s*(?:de\s+|do\s+|da\s+|[-:]\s*)?','',key).strip()
+        sports={
+            'Futebol 7':{'fut7','fut 7','futebol7','futebol 7','futebol society','society'},
+            'Futsal':{'futsal','fut sal'},
+            'Futebol de campo':{'futebol de campo','futebol campo','futebol 11'},
+            'Voleibol':{'volei','voleibol','volleyball'},
+            'Vôlei de praia':{'volei de praia','voleibol de praia','volei praia'},
+            'Basquetebol':{'basquete','basquetebol','basketball'},
+            'Handebol':{'handebol','handball'},
+            'Tênis de mesa':{'tenis de mesa','ping pong','ping-pong'},
+            'Tênis':{'tenis'},'Natação':{'natacao'},'Atletismo':{'atletismo'},
+            'Xadrez':{'xadrez'},'Badminton':{'badminton'},
+        }
+        for canonical,aliases in sports.items():
+            if key in aliases:return canonical
+    elif activity=='XII':
+        roles={'Secretaria':{'secretaria','secretario','secretaria da atletica','departamento de secretaria'},
+               'Presidência':{'presidente','presidencia'},'Vice-presidência':{'vice presidente','vice-presidente','vice presidencia'},
+               'Conselho':{'conselheiro','conselheira','conselho'},
+               ACTIVITIES['XII']:{'membro','membro da atletica','membro da xii','membro da atletica xii de marco'}}
+        for canonical,aliases in roles.items():
+            if key in aliases:return canonical
+    elif activity=='Pantercats' and key in {'cheerleader','cheerleaders','cheer','cheerleaders pantercats','pantercats'}:
+        return 'Cheerleader'
+    elif activity=='Panterada' and key in {'bateria','bateria panterada','panterada'}:
+        return 'Integrante da Bateria Panterada'
+    return original
 
 def periods(text):
     """Only expand explicit ranges. Missing connectors and bare years need review."""
@@ -120,9 +156,26 @@ def analyze(filename, data):
                     elif 'pantercat' in norm(piece): kind = 'Pantercats'
                 semester_list, warning = periods(piece)
                 if activity in {'Social','EP'}:
-                    semester_list, warning = [], 'Confirme o evento, o semestre e a carga horária.'
+                    warning = 'Confirme o evento, o semestre e a carga horária.'
                 detail = re.split(r'20\d{2}',piece)[0].strip(' ,.-') or ACTIVITIES[kind]
+                if re.match(r'^\s*20\d{2}',piece):
+                    remainder=re.sub(r'20\d{2}\s*[/.-]\s*0?[12]','',piece)
+                    remainder=re.sub(r'^(?:\s|[,;:/.-]|\b(?:ate|até|a|ao|e|de)\b)+','',remainder,flags=re.I)
+                    detail=remainder.strip(' ,.-') or ACTIVITIES[kind]
+                detail=re.sub(r'\s+(?:de|do|da|desde|entre|no semestre|em)\s*$','',detail,flags=re.I).strip()
                 if norm(detail) in {'de','membro de','membro','sim'}: detail=ACTIVITIES[kind]
+                detail=canonical_detail(kind,detail)
+                hours=48 if kind=='EP' else (0 if kind in {'Social','JIA','Evento'} else 100)
+                explicit_hours=re.findall(r'(?<!\d)(\d+(?:[.,]\d+)?)\s*(?:horas?\b|h\b)',norm(piece))
+                hour_values={float(value.replace(',','.')) for value in explicit_hours}
+                if hour_values:
+                    if len(hour_values)==1 and 0.5<=next(iter(hour_values))<=2000:
+                        source_hours=next(iter(hour_values))
+                        if kind in {'Social','JIA','Evento','EP'}:hours=source_hours
+                        elif source_hours!=hours:warning=warning or 'A resposta informa outra carga horária. Confirme o valor por semestre.'
+                    else:warning=warning or 'Há cargas horárias conflitantes ou fora do limite. Confirme o valor.'
+                if kind=='Atleta' and re.search(r'\b(?:fut7|fut 7|futebol 7|society|futsal|volei|voleibol|basquete|handebol|natacao|xadrez)\b\s*(?:e|/|,|\+)\s*(?:atleta\s+(?:de\s+)?)?\b(?:fut7|fut 7|futebol 7|society|futsal|volei|voleibol|basquete|handebol|natacao|xadrez)\b',norm(detail)):
+                    warning=warning or 'Há mais de uma modalidade na resposta. Separe as participações e confirme cada período.'
                 for semester in semester_list or ['']:
                     key = (ra,norm(name),kind,semester,norm(detail))
                     if key in seen: duplicates += 1; continue
@@ -132,7 +185,7 @@ def analyze(filename, data):
                         field_warning='Nome ou descrição excede o limite do certificado. Revise o texto.'
                     if any(str(v).lstrip().startswith('=') for v in (name,ra,piece)):
                         field_warning='Há uma fórmula na resposta. Substitua por dados confirmados.'
-                    records.append(dict(id=len(records)+1,name=name,ra=ra,activity=kind,detail=detail,semester=semester,hours=48 if kind=='EP' else (0 if kind in {'Social','JIA','Evento'} else 100),source=piece,row=rownum,warning=identity_error or field_warning or warning or '',approved=False))
+                    records.append(dict(id=len(records)+1,name=name,ra=ra,activity=kind,detail=detail,semester=semester,hours=hours,source=piece,row=rownum,warning=identity_error or field_warning or warning or '',approved=False))
     for record in records:
         if len(names_by_ra[record['ra']])>1:
             record['warning']='O mesmo RA aparece com nomes diferentes. Confirme a identidade e as participações.'
@@ -166,10 +219,12 @@ def certificate(record, issued):
     pdf.setFillColor(white); pdf.setFont('Helvetica-Bold',13)
     pdf.drawCentredString(w/2,415,f'APUCARANA, {issued.day} DE {months[issued.month-1].upper()} DE {issued.year}')
     name=escape(record['name'].upper())
-    ra,detail=[escape(record[k]) for k in ('ra','detail')]
+    ra=escape(record['ra']);detail=escape(canonical_detail(record['activity'],record['detail']))
     activity=record['activity']; semester=record['semester'].replace('.','/')
     if activity in {'EP','JIA','Evento','Social'}:
         participation=f'participou de {escape(ACTIVITIES[activity])}, na atividade {detail}, no semestre {semester}.'
+    elif activity=='Atleta':
+        participation=f'participou como atleta da XII de Março, na modalidade {detail}, por um semestre, sendo este no ano de {semester}.'
     else:
         participation=f'participou de {escape(ACTIVITIES[activity])}, na função/atividade {detail}, por um semestre, sendo este no ano de {semester}.'
     text=f'Declaramos para os devidos fins que <b>{name}</b>, portador(a) do R.A. (Registro Acadêmico): <b>Nº {ra}</b>, {participation}<br/><br/>Esta declaração está de acordo com a organização geral da Associação Atlética Acadêmica de Engenharia XII de Março.<br/><br/>Para tanto foram declaradas <b>{record["hours"]:g} horas</b>; totalizando <b>{record["hours"]:g} horas</b>.'
@@ -187,6 +242,12 @@ def slug(value):
 def make_zip(records, issued, naming):
     if naming not in {'name','ra'}: raise ValueError('Escolha nomes por pessoa ou RA.')
     if not records or len(records)>1000: raise ValueError('Selecione de 1 a 1.000 certificados.')
+    identities=set()
+    for record in records:
+        validate_record(record)
+        key=(record['ra'],norm(record['name']),record['activity'],record['semester'],norm(canonical_detail(record['activity'],record['detail'])))
+        if key in identities:raise ValueError('Há participações repetidas no lote. Revise as duplicatas antes de emitir.')
+        identities.add(key)
     stream=BytesIO(); manifest=[]; filenames=set()
     with zipfile.ZipFile(stream,'w',zipfile.ZIP_DEFLATED) as archive:
         for r in records:
@@ -197,7 +258,7 @@ def make_zip(records, issued, naming):
             filename=folder+base+'.pdf'; suffix=2
             while filename in filenames: filename=folder+base+f' - {suffix}.pdf'; suffix+=1
             filenames.add(filename); archive.writestr(filename,body)
-            manifest.append({'arquivo':filename,'nome':r['name'],'ra':r['ra'],'atividade':r['activity'],'descricao':r['detail'],'semestre':r['semester'],'horas':r['hours'],'origem':r.get('source','')})
+            manifest.append({'arquivo':filename,'nome':r['name'],'ra':r['ra'],'atividade':r['activity'],'descricao':canonical_detail(r['activity'],r['detail']),'semestre':r['semester'],'horas':r['hours'],'origem':r.get('source','')})
         output=StringIO(); writer=csv.DictWriter(output,fieldnames=list(manifest[0])); writer.writeheader()
         # Neutralize spreadsheet formula injection in the audit file.
         writer.writerows({k:("'"+str(v) if str(v).lstrip().startswith(('=','+','-','@')) or str(v).startswith(('\t','\r')) else v) for k,v in m.items()} for m in manifest)
@@ -213,7 +274,11 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob:; frame-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
         self.end_headers(); self.wfile.write(body)
     def do_GET(self):
-        paths={'/':('web/index.html','text/html; charset=utf-8'),'/app.js':('web/app.js','text/javascript; charset=utf-8'),'/style.css':('web/style.css','text/css; charset=utf-8'),'/responsive.css':('web/responsive.css','text/css; charset=utf-8')}
+        paths={'/':('web/dist/index.html','text/html; charset=utf-8'),'/style.css':('web/style.css','text/css; charset=utf-8'),'/responsive.css':('web/responsive.css','text/css; charset=utf-8')}
+        # Serve only compiled public assets, never arbitrary frontend source paths.
+        for asset in (ROOT/'web/dist/static').glob('*'):
+            if re.fullmatch(r'[A-Za-z0-9_-]+\.(js|css)',asset.name) and asset.is_file():
+                paths['/static/'+asset.name]=(asset.relative_to(ROOT).as_posix(),'text/javascript; charset=utf-8' if asset.suffix=='.js' else 'text/css; charset=utf-8')
         paths['/site.webmanifest']=('web/site.webmanifest','application/manifest+json')
         paths['/identidade']=('web/identity.html','text/html; charset=utf-8')
         paths['/identity.js']=('web/identity.js','text/javascript; charset=utf-8')
@@ -223,20 +288,35 @@ class Handler(BaseHTTPRequestHandler):
             paths['/assets/'+asset]=('assets/'+asset,kind)
         if self.path.split('?')[0] not in paths: return self.reply({'error':'Não encontrado'},status=404)
         self.path=self.path.split('?')[0]
-        path,kind=paths[self.path]; self.reply((ROOT/path).read_bytes(),kind)
+        path,kind=paths[self.path]
+        if not (ROOT/path).is_file():return self.reply({'error':'Compile a interface com pnpm --dir frontend build.'},status=503)
+        self.reply((ROOT/path).read_bytes(),kind)
     def do_POST(self):
         try:
             # Reject cross-origin requests and DNS rebinding against the local service.
             host=self.headers.get('Host',''); origin=self.headers.get('Origin')
-            if host not in {f'127.0.0.1:{self.server.server_port}',f'localhost:{self.server.server_port}'} or (origin and origin not in {f'http://{host}'}): return self.reply({'error':'Origem não permitida'},status=403)
             length=int(self.headers.get('Content-Length','0'))
             if not 0 < length <= 15_000_000: raise ValueError('Limite de upload: 10 MB.')
-            payload=json.loads(self.rfile.read(length))
+            # Consume the bounded body before replying so Windows clients do not
+            # receive a connection reset instead of the validation response.
+            body=self.rfile.read(length)
+            if host not in {f'127.0.0.1:{self.server.server_port}',f'localhost:{self.server.server_port}'} or (origin and origin not in {f'http://{host}'}): return self.reply({'error':'Origem não permitida'},status=403)
+            payload=json.loads(body)
             if self.path=='/api/analyze':
                 data=base64.b64decode(payload['data'],validate=True)
                 if len(data)>10_000_000: raise ValueError('Limite de upload: 10 MB.')
                 return self.reply(analyze(payload['filename'],data))
             if self.path=='/api/preview': return self.reply(certificate(payload['record'],payload['issued']),'application/pdf')
+            if self.path=='/api/normalize':
+                records=payload['records']
+                if not isinstance(records,list) or len(records)>5000:raise ValueError('Padronize até 5.000 participações por vez.')
+                result=[];changed=0
+                for record in records:
+                    if not isinstance(record,dict) or record.get('activity') not in ACTIVITIES or not isinstance(record.get('detail'),str) or len(record['detail'])>350:
+                        raise ValueError('Atividade ou descrição inválida para padronização.')
+                    detail=canonical_detail(record['activity'],record['detail']);changed+=detail!=record['detail']
+                    result.append({**record,'detail':detail})
+                return self.reply({'records':result,'changed':changed})
             if self.path=='/api/generate': return self.reply(make_zip(payload['records'],payload['issued'],payload.get('naming','name')),'application/zip')
             return self.reply({'error':'Não encontrado'},status=404)
         except ValueError as error: self.reply({'error':str(error) or 'Dados inválidos. Confira os campos preenchidos.'},status=400)

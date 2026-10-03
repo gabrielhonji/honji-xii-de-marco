@@ -14,8 +14,6 @@ A marca permanece como padrão do produto, independentemente de armazenamento lo
 
 Papel/creme, grade leve, títulos grandes, destaques em serifa, tipografia de apoio sem serifa, espaço generoso e numeração discreta. HONJI aparece sem subtítulo genérico no lettering. Cada projeto pode adaptar paleta e conteúdo, preservando Giro, padrão de nomes e crédito do autor.
 
-O responsável gosta de flores e plantas, cozinhar, jogos, tecnologia e programação. Essas afinidades informam a expressão pessoal da marca; não devem ser reunidas literalmente no símbolo aprovado.
-
 ## Paleta da XII
 
 | Token | Claro | Escuro |
@@ -37,6 +35,7 @@ A identidade da XII deriva das referências em bordô, preto e dourado. O docume
 - Autoria sempre visível no footer, com link confirmado do autor.
 - Footer sólido, como o header, sem link solto para a identidade. A pantera monocromática de `assets/xii-icon.svg` identifica a XII no header e no footer; o Giro identifica HONJI.
 - Tema inicial acompanha o dispositivo; a escolha manual fica no navegador.
+- Tooltips discretos no hover e foco de teclado descrevem a ação; só exibem atalhos implementados. A lua preenchida tem inclinação suave, mantendo a centralização e o tamanho do botão.
 - Controles de toque com pelo menos 44 px. Campos com fonte de 16 px em celular.
 - Registros em cartões em celular. Preservar rolagem vertical do conteúdo, sem overflow horizontal.
 - Validar 390/393 px para iPhones, 768/820 px para iPads e desktop quando as alterações afetarem o layout. Restaurar o viewport normal depois dos testes.

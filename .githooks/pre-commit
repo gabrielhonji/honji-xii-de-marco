@@ -1,0 +1,15 @@
+#!/bin/sh
+set -eu
+task_python=$(git config --get honji.python || true)
+if [ -n "$task_python" ]; then
+  :
+elif [ -x .venv/Scripts/python.exe ]; then
+  task_python=.venv/Scripts/python.exe
+elif [ -x .venv/bin/python ]; then
+  task_python=.venv/bin/python
+elif command -v python3 >/dev/null 2>&1; then
+  task_python=python3
+else
+  task_python=python
+fi
+exec "$task_python" tools/check_public_data.py --staged

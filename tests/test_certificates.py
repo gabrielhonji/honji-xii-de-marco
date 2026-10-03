@@ -28,7 +28,7 @@ class CertificatesTest(unittest.TestCase):
     def test_zip_collision_and_pdf_content(self):
         from pypdf import PdfReader
         r=dict(name='Marina Exemplo Fictícia',ra='0012345',activity='Pantercats',semester='2022.1',detail='Cheerleader',hours=100,approved=True)
-        archive=zipfile.ZipFile(BytesIO(make_zip([r,r],'2026-10-02','ra')))
+        archive=zipfile.ZipFile(BytesIO(make_zip([r,{**r,'detail':'Treinador de cheerleading'}],'2026-10-02','ra')))
         pdfs=[n for n in archive.namelist() if n.endswith('.pdf')]
         self.assertEqual(len(set(pdfs)),2)
         self.assertIn('0012345 - pantercats - 2022.1.pdf',pdfs[0])

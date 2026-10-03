@@ -13,7 +13,7 @@ from pathlib import Path
 from http.server import ThreadingHTTPServer
 import sys
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from server import ACTIVITIES, Handler, ROOT, analyze, certificate, make_zip, periods, validate_record
+from server import ACTIVITIES, Handler, ROOT, analyze, canonical_detail, certificate, make_zip, periods, validate_record
 from pypdf import PdfReader
 
 CSV = ROOT/'tests/fixtures/participacoes-ficticias.csv'
@@ -25,6 +25,27 @@ def example(**changes):
     return record
 
 class ImportRegressionTest(unittest.TestCase):
+    def response(self,column,value):
+        output=StringIO();writer=csv.writer(output);writer.writerows([['Nome Completo','RA',column],['Participante Fictício','0012345',value]])
+        return analyze('exemplo-ficticio.csv',output.getvalue().encode())['records']
+
+    def test_alias_deduplication_and_multiple_modalities(self):
+        records=self.response('Se foi atleta/','fut7 2024/1; atleta de Fut7 2024/1')
+        self.assertEqual(len(records),1);self.assertEqual(records[0]['detail'],'Futebol 7')
+        record=self.response('Se foi atleta/','Fut7 e futsal 2024/1')[0]
+        self.assertIn('modalidade',record['warning'])
+
+    def test_description_after_period_and_explicit_event_information(self):
+        record=self.response('Se foi atleta/','2024/1 até 2024/2 - atleta de Fut7')[0]
+        self.assertEqual(record['detail'],'Futebol 7');self.assertFalse(record['warning'])
+        record=self.response('Ação social','Arrecadação 2024/2 12,5 horas')[0]
+        self.assertEqual((record['semester'],record['hours']),('2024.2',12.5));self.assertTrue(record['warning'])
+
+    def test_conflicting_hours_and_unconfirmed_period_stay_pending(self):
+        for value in ['Fut7 2024/1 150 horas','Fut7 2024 100 horas','Fut7 2024/1 10 h e 20 h']:
+            record=self.response('Se foi atleta/',value)[0]
+            self.assertTrue(record['warning']);self.assertFalse(record['approved'])
+
     def test_fictitious_fixture_exact_counts_and_pending_cases(self):
         result=analyze(CSV.name,CSV.read_bytes())
         self.assertEqual((result['responses'],len(result['records']),result['duplicates'],result['people']),(14,31,5,11))
@@ -64,6 +85,27 @@ class ImportRegressionTest(unittest.TestCase):
         self.assertIn('fórmula',records[0]['warning'])
 
 class CertificateRegressionTest(unittest.TestCase):
+    def test_explicit_aliases_have_one_canonical_description(self):
+        for detail in ['fut7','Fut7','FUT 7','atleta de Fut7','futebol society']:
+            self.assertEqual(canonical_detail('Atleta',detail),'Futebol 7')
+        self.assertEqual(canonical_detail('Atleta','atleta de FUTSAL'),'Futsal')
+        self.assertEqual(canonical_detail('Atleta','Fut7 e futsal'),'Fut7 e futsal')
+        self.assertEqual(canonical_detail('Atleta','Capitão de Fut7'),'Capitão de Fut7')
+        self.assertEqual(canonical_detail('XII','Departamento de secretaria'),'Secretaria')
+
+    def test_duplicate_aliases_cannot_issue_twice(self):
+        with self.assertRaisesRegex(ValueError,'repetidas'):
+            make_zip([example(activity='Atleta',detail='fut7'),example(activity='Atleta',detail='atleta de Fut7')],'2026-10-03','name')
+
+    def test_normalized_description_matches_pdf_and_manifest(self):
+        record=example(activity='Atleta',detail='atleta de Fut7')
+        archive=zipfile.ZipFile(BytesIO(make_zip([record],'2026-10-03','name')))
+        name=next(n for n in archive.namelist() if n.endswith('.pdf'))
+        text=PdfReader(BytesIO(archive.read(name))).pages[0].extract_text()
+        self.assertIn('Futebol 7',text);self.assertNotIn('Fut7',text)
+        row=next(csv.DictReader(StringIO(archive.read('relatorio.csv').decode('utf-8-sig'))))
+        self.assertEqual(row['descricao'],'Futebol 7')
+
     def test_approval_must_be_boolean_and_pending_cannot_be_exported(self):
         for approval in ['true','false',1,0,None]:
             with self.assertRaises(ValueError):validate_record(example(approved=approval))
@@ -122,13 +164,18 @@ class HttpRegressionTest(unittest.TestCase):
     def request(self,path,payload=None,headers=None):
         data=json.dumps(payload).encode() if payload is not None else None
         req=urllib.request.Request(self.base+path,data=data,headers={'Content-Type':'application/json',**(headers or {})})
-        try:return urllib.request.urlopen(req,timeout=20)
+        try:return urllib.request.build_opener(urllib.request.ProxyHandler({})).open(req,timeout=20)
         except urllib.error.HTTPError as error:return error
 
     def test_public_assets_and_private_files(self):
-        for path in ['/','/app.js','/assets/honji-symbol.svg','/assets/xii-icon.svg','/assets/favicon.svg','/site.webmanifest']:
+        for path in ['/','/assets/honji-symbol.svg','/assets/xii-icon.svg','/assets/favicon.svg','/site.webmanifest']:
             response=self.request(path);self.assertEqual(response.status,200,path);self.assertEqual(response.headers['Cache-Control'],'no-store')
-        for path in ['/server.py','/.git/config','/tests/fixtures/participacoes-ficticias.csv','/documentos-certificados/respostas.csv','/../server.py']:
+        import re
+        html=self.request('/').read().decode()
+        compiled=re.findall(r'(?:src|href)="(/static/[^\"]+)"',html)
+        self.assertEqual(len(compiled),2)
+        for path in compiled:self.assertEqual(self.request(path).status,200,path)
+        for path in ['/server.py','/.git/config','/tests/fixtures/participacoes-ficticias.csv','/documentos-certificados/respostas.csv','/../server.py','/frontend/src/App.tsx','/static/../server.py','/static/missing.js','/static/index.js.map']:
             self.assertEqual(self.request(path).status,404,path)
 
     def test_origin_and_host_checks(self):
@@ -146,5 +193,11 @@ class HttpRegressionTest(unittest.TestCase):
         archive=zipfile.ZipFile(BytesIO(generated.read()));self.assertEqual(len([p for p in archive.namelist() if p.endswith('.pdf')]),19)
         invalid=self.request('/api/generate',{'records':[example(approved=False)],'issued':'2026-10-03','naming':'name'})
         self.assertEqual(invalid.status,400);self.assertIn('Aprove',json.load(invalid)['error'])
+
+    def test_normalization_keeps_pending_hours_period_and_approval(self):
+        record=example(activity='Atleta',detail='Fut7',approved=False,hours=0,semester='',warning='Confirme período')
+        response=self.request('/api/normalize',{'records':[record]})
+        result=json.load(response);self.assertEqual(result['changed'],1)
+        self.assertEqual(result['records'][0],{**record,'detail':'Futebol 7'})
 
 if __name__=='__main__':unittest.main()

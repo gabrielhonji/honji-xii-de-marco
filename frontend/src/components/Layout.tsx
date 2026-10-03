@@ -62,7 +62,6 @@ export function Hero() {
     <section className="hero">
       <div className="eyebrow">
         <span>01 / SECRETARIA DIGITAL</span>
-        <span>ASSOCIAÇÃO ATLÉTICA ACADÊMICA</span>
       </div>
       <div className="hero-line">
         <h1>
@@ -73,34 +72,37 @@ export function Hero() {
           <em>Reconhecimento.</em>
         </h1>
         <div className="hero-aside">
-          <svg
-            className="honji-signature"
-            viewBox="0 0 64 64"
-            role="img"
-            aria-label="Símbolo HONJI"
-          >
-            <use href="/assets/honji-symbol.svg#mark" />
-          </svg>
-          <p>
-            Da planilha ao certificado.
-            <br />
-            Mais tempo para fazer a XII acontecer.
-          </p>
-          <a href="#workspace">
-            Começar emissão{" "}
+          <span className="hero-aside-label">ASSOCIAÇÃO ATLÉTICA ACADÊMICA</span>
+          <div className="hero-aside-content">
             <svg
-              className="action-icon"
-              viewBox="0 0 20 20"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
+              className="honji-signature"
+              viewBox="0 0 64 64"
+              role="img"
+              aria-label="Símbolo HONJI"
             >
-              <path d="M4 10h12m-5-5 5 5-5 5" />
+              <use href="/assets/honji-symbol.svg#mark" />
             </svg>
-          </a>
+            <p>
+              Da planilha ao certificado.
+              <br />
+              Mais tempo para fazer a XII acontecer.
+            </p>
+            <a href="#workspace">
+              Começar emissão{" "}
+              <svg
+                className="action-icon"
+                viewBox="0 0 20 20"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M4 10h12m-5-5 5 5-5 5" />
+              </svg>
+            </a>
+          </div>
         </div>
       </div>
       <div className="hero-bottom">
@@ -136,8 +138,10 @@ export function Footer() {
           >
             gabriel.honji
           </a>
+          <span className="footer-separator" aria-hidden="true">·</span>
           <span>VERSÃO {__APP_VERSION__}</span>
-          <span>UTFPR / CAMPUS APUCARANA</span>
+          <span className="footer-separator" aria-hidden="true">·</span>
+          <span>UTFPR / APUCARANA</span>
         </div>
       </div>
     </footer>

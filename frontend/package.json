@@ -1,11 +1,11 @@
 {
   "name": "honji-xii-de-marco",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && vite build && cp -R ../assets ../web/dist/assets",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

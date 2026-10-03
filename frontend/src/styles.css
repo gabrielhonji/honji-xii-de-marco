@@ -73,7 +73,7 @@
 .download-result .download-link:hover {
   color: var(--text);
 }
-/* The grid stays behind the editorial hero; the working area has an opaque canvas. */
+/* The grid stays fixed and fades gradually into the working canvas. */
 html {
   background-attachment: fixed;
 }
@@ -82,9 +82,22 @@ body {
 }
 #workspace {
   position: relative;
-  background: var(--bg);
-  box-shadow: 0 0 0 100vmax var(--bg);
-  clip-path: inset(0 -100vmax);
+  isolation: isolate;
+  background: transparent;
+}
+#workspace::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0 auto 0 50%;
+  width: 100vw;
+  transform: translateX(-50%);
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--bg) 28%, transparent) 0,
+    color-mix(in srgb, var(--bg) 82%, transparent) 180px,
+    var(--bg) 420px
+  );
 }
 .stats,
 .table-wrap,
@@ -119,7 +132,93 @@ body {
 #upload-status {
   color: var(--warning-text);
 }
+.hero-aside {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 28px;
+  padding-bottom: 8px;
+}
+.hero-aside-label {
+  font-size: 10px;
+  line-height: 1.6;
+  letter-spacing: 1.6px;
+}
+.hero-aside-content > .honji-signature {
+  display: block;
+  width: 74px;
+  height: 74px;
+  color: var(--accent);
+}
+.hero-aside-content p {
+  margin: 24px 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.7;
+}
+.hero-aside-content > a {
+  display: inline-flex;
+  align-items: center;
+  gap: 18px;
+  min-height: 44px;
+  margin-top: 5px;
+  padding: 13px 16px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--surface);
+  font-size: 12px;
+}
+.site-footer .footer-credit {
+  display: flex;
+  flex-flow: row wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px 10px;
+  max-width: 560px;
+  line-height: 1.5;
+}
+.site-footer .footer-credit a {
+  min-height: 0;
+}
+.footer-separator {
+  color: var(--line);
+}
 @media (max-width: 767px) {
+  .hero-aside {
+    display: block;
+    gap: 0;
+    padding-bottom: 0;
+  }
+  .hero-aside-label {
+    display: block;
+    margin-bottom: 18px;
+  }
+  .hero-aside-content {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 18px;
+  }
+  .hero-aside-content > .honji-signature {
+    width: 48px;
+    height: 48px;
+  }
+  .hero-aside-content p {
+    margin: 0;
+    font-size: 11px;
+  }
+  .hero-aside-content > a {
+    max-width: 112px;
+    margin: 0;
+    gap: 10px;
+    font-size: 9px;
+    line-height: 1.5;
+  }
+  .site-footer .footer-credit {
+    justify-content: flex-start;
+    max-width: none;
+  }
   .stats > div:nth-child(2n) {
     border-right: 0;
   }

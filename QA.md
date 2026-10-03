@@ -46,6 +46,8 @@ Tooltips compartilhados descrevem importação, tema, ajuda, ações de revisão
 
 Os três seletores usam opções próprias com o tema HONJI. Foram conferidos escolha por clique, setas/Home/Enter, Esc fechando somente o menu dentro do editor, filtro de 12 pendências e padrão de arquivos por RA. A largura de rolagem do menu coincide com sua largura útil. O tooltip Cancelar/Esc e o salvamento por Ctrl+Enter foram verificados no navegador. A lua usa rotação de −35°.
 
+Campos de texto e seletores compartilham altura de 44 px, padding e fonte de 13 px no desktop e 16 px no celular. RA e atividade foram medidos com a mesma altura em ambas as larguras; nomes, descrição, semestre e horas também têm a mesma geometria. O viewport normal foi restaurado.
+
 ## Medição de geração
 
 Em uma execução neste computador, com identidades exclusivamente fictícias, template neutro e geração sequencial em memória: 100 PDFs com ZIP em 0,214 s (0,161 MB); 1.000 em 2,134 s (1,610 MB). A contagem dos PDFs no ZIP foi conferida. A medição não inclui rede, template com imagem, concorrência ou persistência; não é um teste de 100.000 certificados nem uma comparação com C. O limite continua em 1.000 por emissão.

@@ -184,3 +184,15 @@ body {
     flex-basis: 100%;
   }
 }
+
+/* Text inputs and custom select triggers share one field geometry. */
+input:not([type="checkbox"]):not([type="file"]), .select-trigger {
+  height: 44px;
+  min-height: 44px;
+  padding: 11px 12px;
+  font-size: 13px;
+  line-height: 20px;
+  border-radius: 3px;
+}
+.select-trigger > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media(max-width:767px) { input:not([type="checkbox"]):not([type="file"]), .select-trigger { font-size: 16px; } }

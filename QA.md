@@ -59,3 +59,9 @@ A importação mantém as alternativas duplicadas separadas do lote. A comparaç
 Os 32 testes automatizados passaram. O build de produção e a verificação de tipos passaram. No navegador, foram conferidos troca de versões e retorno à original, aprovação de 19 registros sem pendência, as cinco ordenações nos dois sentidos, páginas de 10/25 registros, última página com um registro e busca reiniciando a paginação. A revisão mantém apenas dez participações por padrão e a aprovação em lote integra a barra de ações.
 
 No viewport móvel, o seletor de ordenação e a inversão de sentido funcionaram, a comparação passou a uma coluna e a largura de rolagem do documento coincidiu com a largura útil. O viewport normal foi restaurado. Todos os testes utilizaram identidades fictícias.
+
+## Estabilidade das colunas e campo de data
+
+A tabela utiliza distribuição fixa de colunas no desktop. As larguras medidas permaneceram iguais em todos os registros, pendências, aprovados, lista vazia e ordenação; textos longos quebram linha sem deslocar os controles. A disposição em cartões no celular foi preservada.
+
+O campo de data mantém 44 px de altura, fonte de 16 px em celular, largura contida e esquema de cores vinculado ao tema. A largura de rolagem do documento coincidiu com a largura útil nos quatro tamanhos solicitados de viewport: 390, 393, 768 e 820 px. O viewport normal foi restaurado. O calendário aberto pelo controle continua nativo do navegador/sistema; esta validação local não substitui teste em Safari de dispositivo físico.

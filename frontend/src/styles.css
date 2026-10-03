@@ -229,7 +229,23 @@ input:not([type="checkbox"]):not([type="file"]), .select-trigger {
   .duplicate-version { padding: 16px; }
 }
 .mobile-sort { display: none; }
+/* Column geometry depends on the viewport, never the filtered contents. */
+@media(min-width:768px) {
+  .table-wrap table { table-layout: fixed; width: 100%; min-width: 1140px; }
+  .column-issue { width: 76px; }
+  .column-participant { width: 28%; }
+  .column-semester { width: 100px; }
+  .column-hours { width: 72px; }
+  .column-review { width: 112px; }
+  .column-actions { width: 250px; }
+  .table-wrap td:nth-child(2), .table-wrap td:nth-child(3) { white-space: normal; overflow-wrap: anywhere; }
+  .table-wrap td .sub { max-width: none; overflow-wrap: anywhere; }
+}
+input[type="date"] { width: 100%; min-width: 0; max-width: 100%; color-scheme: light; }
+[data-theme="dark"] input[type="date"] { color-scheme: dark; }
+input[type="date"]::-webkit-date-and-time-value { text-align: left; }
 @media(max-width:767px) {
+  .table-wrap colgroup { display: none; }
   .mobile-sort { display: flex; gap: 10px; align-items: center; }
   .mobile-sort .custom-select { flex: 1; }
   .mobile-sort .secondary { white-space: nowrap; padding-inline: 10px; }

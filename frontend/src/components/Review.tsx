@@ -145,6 +145,15 @@ export function Review(props: Props) {
       </div>
       <div className="table-wrap">
         <table>
+          <colgroup>
+            <col className="column-issue" />
+            <col className="column-participant" />
+            <col className="column-activity" />
+            <col className="column-semester" />
+            <col className="column-hours" />
+            <col className="column-review" />
+            <col className="column-actions" />
+          </colgroup>
           <thead>
             <tr>
               {[

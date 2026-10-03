@@ -86,6 +86,21 @@ class ImportRegressionTest(unittest.TestCase):
         self.assertTrue(result['duplicate_records'][0]['warning'])
         self.assertIn('150',result['duplicate_records'][0]['source'])
 
+    def test_pending_event_editions_do_not_collapse_as_duplicates(self):
+        output=StringIO();writer=csv.writer(output)
+        writer.writerows([['Nome Completo','RA','Evento esportivo'],
+            ['Participante Fictício','0012345','EP 2019'],
+            ['Participante Fictício','0012345','EP 2022'],
+            ['Participante Fictício','0012345','EP 2023'],
+            ['Participante Fictício','0012345','EP 2019']])
+        result=analyze('eventos-ficticios.csv',output.getvalue().encode())
+        self.assertEqual((len(result['records']),result['duplicates']),(3,1))
+        self.assertEqual(
+            {record['source'] for record in result['records']},
+            {'EP 2019','EP 2022','EP 2023'},
+        )
+        self.assertEqual(result['duplicate_records'][0]['source'],'EP 2019')
+
     def test_csv_encodings_and_delimiters(self):
         for delimiter,encoding in [(';','cp1252'),('\t','utf-8-sig'),(',','utf-8')]:
             with self.subTest(delimiter=delimiter,encoding=encoding):

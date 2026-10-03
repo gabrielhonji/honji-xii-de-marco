@@ -33,9 +33,6 @@ export function Header({
         </a>
       </div>
       <div className="header-tools">
-        <span className="local">
-          <i></i> Ambiente local
-        </span>
         <Tooltip
           text={theme === "dark" ? "Ativar tema claro." : "Ativar tema escuro."}
         >
@@ -139,6 +136,7 @@ export function Footer() {
           >
             gabriel.honji
           </a>
+          <span>VERSÃO {__APP_VERSION__}</span>
           <span>UTFPR / CAMPUS APUCARANA</span>
         </div>
       </div>

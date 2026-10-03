@@ -12,6 +12,12 @@
   --color-honji-accent: var(--accent);
   --color-honji-surface: var(--surface);
 }
+:root {
+  --muted-on-soft: #765e66;
+}
+:root[data-theme="dark"] {
+  --muted-on-soft: var(--muted);
+}
 
 /* Tooltips stay inside modal top layers and do not change component layout. */
 .tooltip-anchor {
@@ -67,12 +73,59 @@
 .download-result .download-link:hover {
   color: var(--text);
 }
-/* Let the document paint its grid throughout resizing and mobile browser chrome changes. */
+/* The grid stays behind the editorial hero; the working area has an opaque canvas. */
 html {
-  background-attachment: scroll;
+  background-attachment: fixed;
 }
 body {
   min-height: 100dvh;
+}
+#workspace {
+  position: relative;
+  background: var(--bg);
+  box-shadow: 0 0 0 100vmax var(--bg);
+  clip-path: inset(0 -100vmax);
+}
+.stats,
+.table-wrap,
+.pagination-bar {
+  background: var(--surface);
+}
+.stats {
+  overflow: hidden;
+  border-radius: 4px;
+}
+.stats > div:last-child {
+  border-right: 0;
+}
+.table-wrap table,
+.table-wrap tbody,
+.table-wrap tbody tr {
+  background: var(--surface);
+}
+.pagination-bar {
+  margin-top: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+.upload p,
+.upload small,
+.sort-heading,
+.export p,
+.export small {
+  color: var(--muted-on-soft);
+}
+#upload-status {
+  color: var(--warning-text);
+}
+@media (max-width: 767px) {
+  .stats > div:nth-child(2n) {
+    border-right: 0;
+  }
+  .stats > div:nth-last-child(-n + 2) {
+    border-bottom: 0;
+  }
 }
 
 .custom-select {
@@ -201,7 +254,7 @@ input:not([type="checkbox"]):not([type="file"]), .select-trigger {
 .review-actions .secondary { background: transparent; }
 .review-actions .secondary:hover:enabled { background: var(--surface-soft); border-color: var(--accent); }
 .table-wrap th:has(.sort-heading) { padding-block: 0; }
-.sort-heading { display: inline-flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 44px; width: 100%; font: inherit; letter-spacing: inherit; padding: 0; color: var(--muted); transition: color .16s; }
+.sort-heading { display: inline-flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 44px; width: 100%; font: inherit; letter-spacing: inherit; padding: 0; color: var(--muted-on-soft); transition: color .16s; }
 .sort-heading:hover, th[aria-sort="ascending"] .sort-heading, th[aria-sort="descending"] .sort-heading { color: var(--accent); }
 .sort-heading span { font-size: 15px; }
 .pagination-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding-top: 16px; font-size: 11px; color: var(--muted); }

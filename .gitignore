@@ -5,6 +5,7 @@ output/
 documentos-certificados/
 private/
 node_modules/
+.pnpm-store/
 frontend/.vite/
 *.pdf
 *.zip

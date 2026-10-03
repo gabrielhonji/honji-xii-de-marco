@@ -189,7 +189,11 @@ def analyze(filename, data):
                 if kind=='Atleta' and re.search(r'\b(?:fut7|fut 7|futebol 7|society|futsal|volei|voleibol|basquete|handebol|natacao|xadrez)\b\s*(?:e|/|,|\+)\s*(?:atleta\s+(?:de\s+)?)?\b(?:fut7|fut 7|futebol 7|society|futsal|volei|voleibol|basquete|handebol|natacao|xadrez)\b',norm(detail)):
                     warning=warning or 'Há mais de uma modalidade na resposta. Separe as participações e confirme cada período.'
                 for semester in semester_list or ['']:
-                    key = (ra,norm(name),kind,semester,norm(detail))
+                    # Pending periods must keep their original context. Otherwise
+                    # editions such as "EP 2022" and "EP 2023" collapse into the
+                    # same empty-semester key before the secretary can review them.
+                    pending_period = norm(piece) if not semester else ''
+                    key = (ra,norm(name),kind,semester,norm(detail),pending_period)
                     field_warning = ''
                     if len(name)>150 or len(detail)>350:
                         field_warning='Nome ou descrição excede o limite do certificado. Revise o texto.'

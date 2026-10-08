@@ -156,6 +156,17 @@ Respostas reais, certificados de participantes, lotes, temporários e credenciai
 
 Antes de hospedar, configure o domínio absoluto de `og:image` no HTML para permitir o carregamento externo da imagem de compartilhamento.
 
+### Acesso protegido Honji
+
+Quando integrada ao ambiente Honji, a aplicação usa o manifesto
+`honji.integration.json`: login e sessão ficam no BFF do mesmo domínio, nunca
+no navegador. A área protegida exige `xii.certificates.access`; emissão exige
+também `xii.certificates.issue`. Presidente, Vice-presidente e membros
+delegados à Secretaria recebem essas capacidades conforme D-53/D-54. Cada
+emissão deve registrar somente emissor, horário e quantidade — jamais nomes,
+RAs, arquivos ou certificados. A distribuição local continua sem login e não
+deve ser publicada como substituta da integração protegida.
+
 ## Desenvolvimento e testes
 
 ```powershell

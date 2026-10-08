@@ -1,0 +1,7 @@
+{
+  "app": "xii-gabriel",
+  "displayName": "XII Certificate Generator",
+  "redirectUris": ["https://xii-gabriel.honji.com.br/auth/callback"],
+  "webOrigins": ["https://xii-gabriel.honji.com.br"],
+  "serviceAccountName": "XII certificate authorization"
+}

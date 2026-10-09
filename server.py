@@ -3,9 +3,11 @@ from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from io import BytesIO, StringIO
 from datetime import date
-from urllib.parse import urlsplit
+from urllib.parse import urlencode, urlsplit, parse_qs
+from urllib.request import Request, build_opener, ProxyHandler
+from urllib.error import HTTPError, URLError
 from xml.sax.saxutils import escape
-import base64, csv, json, re, unicodedata, zipfile, argparse, math
+import base64, csv, json, re, unicodedata, zipfile, argparse, math, os, secrets, hashlib, hmac, time, uuid
 from reportlab.pdfgen import canvas
 from reportlab.platypus import Paragraph
 from reportlab.lib.styles import ParagraphStyle
@@ -15,6 +17,150 @@ from pypdf import PdfReader, PdfWriter
 
 ROOT = Path(__file__).resolve().parent
 PRIVATE_TEMPLATE_PATH = ROOT/'documentos-certificados/certificate-background.jpg'
+
+HOUR = 60 * 60
+ABSOLUTE_SESSION_SECONDS = 12 * HOUR
+IDLE_SESSION_SECONDS = HOUR
+
+class AuthError(Exception):
+    def __init__(self, status, message): self.status, self.message = status, message
+
+def _origin(value, variable):
+    parsed = urlsplit(value)
+    if parsed.scheme not in {'http', 'https'} or not parsed.netloc or parsed.path not in {'', '/'} or parsed.query or parsed.fragment:
+        raise ValueError(f'{variable} deve conter apenas esquema e host')
+    return value.rstrip('/')
+
+class SessionStore:
+    """Minimal persistent store. It never receives browser OIDC tokens."""
+    def __init__(self, env):
+        import pymysql
+        self.db_name = env['DB_NAME']
+        if not re.fullmatch(r'gabriel_[a-z0-9_]+', self.db_name): raise ValueError('DB_NAME inválido')
+        self.connection = dict(host=env['DB_HOST'], port=int(env.get('DB_PORT', '3306')), user=env['DB_USER'], password=env['DB_PASSWORD'], charset='utf8mb4', autocommit=True)
+        self.pymysql = pymysql
+        self.bootstrap()
+    def connect(self, database=True):
+        return self.pymysql.connect(**self.connection, **({'database': self.db_name} if database else {}))
+    def bootstrap(self):
+        with self.connect(False).cursor() as cur:
+            cur.execute(f'CREATE DATABASE IF NOT EXISTS `{self.db_name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci')
+        with self.connect().cursor() as cur:
+            cur.execute('''CREATE TABLE IF NOT EXISTS xii_sessions (
+                session_hash CHAR(64) PRIMARY KEY, subject CHAR(36) NULL, display_name VARCHAR(160) NULL,
+                csrf_hash CHAR(64) NOT NULL, csrf_token VARCHAR(64) NOT NULL, oauth_state_hash CHAR(64) NULL, oauth_nonce_hash CHAR(64) NULL,
+                oauth_verifier VARBINARY(256) NULL, created_at BIGINT NOT NULL, last_activity_at BIGINT NOT NULL,
+                expires_at BIGINT NOT NULL) ENGINE=InnoDB''')
+            cur.execute('''CREATE TABLE IF NOT EXISTS xii_certificate_issuance_audit (
+                id CHAR(36) PRIMARY KEY, issuer_subject CHAR(36) NOT NULL, issued_at_utc DATETIME(6) NOT NULL,
+                certificate_count INT UNSIGNED NOT NULL) ENGINE=InnoDB''')
+            try: cur.execute('ALTER TABLE xii_sessions ADD COLUMN csrf_token VARCHAR(64) NOT NULL DEFAULT "" AFTER csrf_hash')
+            except self.pymysql.err.OperationalError as error:
+                if error.args[0] != 1060: raise
+            cur.execute('DELETE FROM xii_sessions WHERE expires_at < UNIX_TIMESTAMP()')
+    @staticmethod
+    def digest(value): return hashlib.sha256(value.encode()).hexdigest()
+    def create_pending(self, sid, csrf, state, nonce, verifier):
+        now = int(time.time())
+        with self.connect().cursor() as cur:
+            cur.execute('INSERT INTO xii_sessions (session_hash, csrf_hash, csrf_token, oauth_state_hash, oauth_nonce_hash, oauth_verifier, created_at, last_activity_at, expires_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)', (self.digest(sid), self.digest(csrf), csrf, self.digest(state), self.digest(nonce), verifier.encode(), now, now, now + 600))
+    def consume_callback(self, sid, state):
+        with self.connect().cursor() as cur:
+            cur.execute('SELECT oauth_nonce_hash, oauth_verifier FROM xii_sessions WHERE session_hash=%s AND oauth_state_hash=%s AND expires_at >= UNIX_TIMESTAMP()', (self.digest(sid), self.digest(state)))
+            row = cur.fetchone()
+            cur.execute('DELETE FROM xii_sessions WHERE session_hash=%s', (self.digest(sid),))
+        return row
+    def create(self, sid, csrf, subject, display_name):
+        now = int(time.time())
+        with self.connect().cursor() as cur:
+            cur.execute('INSERT INTO xii_sessions (session_hash, subject, display_name, csrf_hash, csrf_token, created_at, last_activity_at, expires_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)', (self.digest(sid), subject, display_name, self.digest(csrf), csrf, now, now, now + ABSOLUTE_SESSION_SECONDS))
+    def get(self, sid, touch=False):
+        now = int(time.time())
+        with self.connect().cursor() as cur:
+            cur.execute('SELECT subject, display_name, csrf_hash, csrf_token, created_at, last_activity_at, expires_at FROM xii_sessions WHERE session_hash=%s', (self.digest(sid),))
+            row = cur.fetchone()
+            if not row: return None
+            subject, display_name, csrf_hash, csrf_token, created, activity, expires = row
+            if not subject or now > expires or now - activity >= IDLE_SESSION_SECONDS:
+                cur.execute('DELETE FROM xii_sessions WHERE session_hash=%s', (self.digest(sid),)); return None
+            if touch: cur.execute('UPDATE xii_sessions SET last_activity_at=%s WHERE session_hash=%s', (now, self.digest(sid)))
+        return {'sub': subject, 'name': display_name or '', 'csrf_hash': csrf_hash, 'csrf_token': csrf_token}
+    def delete(self, sid):
+        with self.connect().cursor() as cur: cur.execute('DELETE FROM xii_sessions WHERE session_hash=%s', (self.digest(sid),))
+    def audit(self, subject, count):
+        with self.connect().cursor() as cur:
+            cur.execute('INSERT INTO xii_certificate_issuance_audit (id, issuer_subject, issued_at_utc, certificate_count) VALUES (%s,%s,UTC_TIMESTAMP(6),%s)', (str(uuid.uuid4()), subject, count))
+
+class Bff:
+    """OIDC boundary: validates ID tokens and asks the central service per request."""
+    def __init__(self, store, env, public_origin):
+        self.store, self.env, self.public_origin = store, env, public_origin
+        self.issuer = _origin(env.get('OIDC_ISSUER', 'https://acesso-gabriel.honji.com.br/realms/honji'), 'OIDC_ISSUER')
+        self.identity_origin = _origin(env.get('IDENTITY_INTERNAL_ORIGIN', 'http://app-gabriel-identity:8080'), 'IDENTITY_INTERNAL_ORIGIN')
+        self.authorization_origin = _origin(env['AUTHORIZATION_SERVICE_ORIGIN'], 'AUTHORIZATION_SERVICE_ORIGIN')
+        for required in ('OIDC_CLIENT_ID', 'OIDC_CLIENT_SECRET', 'AUTHORIZATION_SERVICE_CLIENT_ID', 'AUTHORIZATION_SERVICE_CLIENT_SECRET'):
+            if not env.get(required): raise ValueError(f'{required} ausente')
+        self.cookie_name = '__Host-xii.sid' if public_origin.startswith('https://') else 'xii.sid'
+    def _cookie(self, handler):
+        for value in handler.headers.get_all('Cookie', []):
+            for part in value.split(';'):
+                name, _, content = part.strip().partition('=')
+                if name == self.cookie_name and re.fullmatch(r'[A-Za-z0-9_-]{43}', content): return content
+        return None
+    def _set_cookie(self, handler, sid, expires=None):
+        attrs = [f'{self.cookie_name}={sid}', 'Path=/', 'HttpOnly', 'SameSite=Lax']
+        if self.public_origin.startswith('https://'): attrs.append('Secure')
+        if expires is not None: attrs.extend(['Max-Age=0', 'Expires=Thu, 01 Jan 1970 00:00:00 GMT'])
+        handler.send_header('Set-Cookie', '; '.join(attrs))
+    def _request(self, url, data=None, headers=None):
+        request = Request(url, data=data, headers=headers or {}, method='POST' if data is not None else 'GET')
+        # The service is reached over the private Docker network, but Keycloak
+        # must still see its public issuer host when constructing metadata URLs.
+        if url.startswith(self.identity_origin): request.add_header('Host', urlsplit(self.issuer).netloc)
+        return build_opener(ProxyHandler({})).open(request, timeout=5)
+    def login(self, handler):
+        sid, csrf, state, nonce, verifier = (secrets.token_urlsafe(32) for _ in range(5))
+        self.store.create_pending(sid, csrf, state, nonce, verifier)
+        query = urlencode({'client_id': self.env['OIDC_CLIENT_ID'], 'response_type': 'code', 'redirect_uri': self.public_origin + '/auth/callback', 'scope': 'openid profile', 'state': state, 'nonce': nonce, 'code_challenge': base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b'=').decode(), 'code_challenge_method': 'S256'})
+        handler.send_response(302); self._set_cookie(handler, sid); handler.send_header('Location', self.issuer + '/protocol/openid-connect/auth?' + query); handler.end_headers()
+    def callback(self, handler, query):
+        sid, state, code = self._cookie(handler), (query.get('state') or [None])[0], (query.get('code') or [None])[0]
+        if not sid or not state or not code: raise AuthError(400, 'Retorno de login inválido.')
+        pending = self.store.consume_callback(sid, state)
+        if not pending: raise AuthError(400, 'Login expirado ou inválido.')
+        nonce_hash, verifier = pending
+        try:
+            payload = urlencode({'grant_type':'authorization_code','client_id':self.env['OIDC_CLIENT_ID'],'client_secret':self.env['OIDC_CLIENT_SECRET'],'code':code,'redirect_uri':self.public_origin + '/auth/callback','code_verifier':verifier.decode()}).encode()
+            response = self._request(self.identity_origin + '/realms/honji/protocol/openid-connect/token', payload, {'Content-Type':'application/x-www-form-urlencoded'})
+            token = json.load(response)['id_token']
+            import jwt
+            jwks = json.load(self._request(self.identity_origin + '/realms/honji/protocol/openid-connect/certs'))
+            kid = jwt.get_unverified_header(token).get('kid')
+            key = next(item.key for item in jwt.PyJWKSet.from_dict(jwks).keys if item.key_id == kid)
+            claims = jwt.decode(token, key, algorithms=['RS256'], audience=self.env['OIDC_CLIENT_ID'], issuer=self.issuer, options={'require':['exp','sub','nonce']})
+            if not hmac.compare_digest(self.store.digest(str(claims['nonce'])), nonce_hash): raise ValueError('nonce')
+            subject = str(uuid.UUID(claims['sub']))
+        except Exception: raise AuthError(401, 'Não foi possível validar a identidade.')
+        new_sid, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
+        self.store.create(new_sid, csrf, subject, str(claims.get('name') or ''))
+        handler.send_response(302); self._set_cookie(handler, new_sid); handler.send_header('Location', '/'); handler.end_headers()
+    def session(self, handler, touch=False):
+        sid = self._cookie(handler)
+        return (sid, self.store.get(sid, touch)) if sid else (None, None)
+    def authorize(self, handler, action, csrf=False):
+        sid, session = self.session(handler, touch=True)
+        if not session: raise AuthError(401, 'Sessão necessária.')
+        if csrf:
+            origin = handler.headers.get('Origin'); provided = handler.headers.get('X-CSRF-Token', '')
+            if origin != self.public_origin or not hmac.compare_digest(self.store.digest(provided), session['csrf_hash']): raise AuthError(403, 'CSRF inválido.')
+        try:
+            payload = urlencode({'grant_type':'client_credentials','client_id':self.env['AUTHORIZATION_SERVICE_CLIENT_ID'],'client_secret':self.env['AUTHORIZATION_SERVICE_CLIENT_SECRET']}).encode()
+            token = json.load(self._request(self.identity_origin + '/realms/honji/protocol/openid-connect/token', payload, {'Content-Type':'application/x-www-form-urlencoded'}))['access_token']
+            decision = self._request(self.authorization_origin + '/internal/authorization/decisions', json.dumps({'integrationId':'xii-certificate-generator','userId':session['sub'],'resource':{'projectId':'XII'},'action':action}).encode(), {'Content-Type':'application/json','Authorization':'Bearer '+token})
+            if not json.load(decision).get('allowed'): raise AuthError(403, 'Acesso não autorizado.')
+        except AuthError: raise
+        except (HTTPError, URLError, KeyError, ValueError, TimeoutError): raise AuthError(503, 'Autorização indisponível.')
+        return sid, session
 
 def private_template_pdf():
     if not PRIVATE_TEMPLATE_PATH.is_file(): return None
@@ -313,16 +459,44 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('Cache-Control','no-store'); self.send_header('X-Content-Type-Options','nosniff')
         self.send_header('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob:; frame-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
         self.end_headers(); self.wfile.write(body)
-    def reply_zip(self,records,issued,naming):
+    def reply_zip(self,records,issued,naming,audit=None):
         validate_batch(records,issued,naming)
         self.send_response(200); self.send_header('Content-Type','application/zip')
         self.send_header('Cache-Control','no-store'); self.send_header('X-Content-Type-Options','nosniff')
         self.send_header('Content-Disposition','attachment; filename="XII-certificados.zip"')
         self.send_header('Connection','close'); self.end_headers(); self.close_connection=True
         write_zip(StreamingWriter(self.wfile),records,issued,naming)
+        if audit: audit()
     def do_GET(self):
-        if self.path.split('?')[0] == '/healthz':
+        raw_path = self.path.split('?')[0]
+        if raw_path == '/healthz':
             return self.reply({'status':'ok'})
+        if raw_path == '/auth/login':
+            try: return self.server.bff.login(self)
+            except AuthError as error: return self.reply({'error':error.message}, status=error.status)
+        if raw_path == '/auth/callback':
+            try: return self.server.bff.callback(self, parse_qs(urlsplit(self.path).query, keep_blank_values=True))
+            except AuthError as error: return self.reply({'error':error.message}, status=error.status)
+        if raw_path == '/api/session':
+            try:
+                _sid, session = self.server.bff.authorize(self, 'xii.certificates.access')
+                capabilities = ['xii.certificates.access']
+                try:
+                    self.server.bff.authorize(self, 'xii.certificates.issue')
+                    capabilities.append('xii.certificates.issue')
+                except AuthError as error:
+                    if error.status != 403: raise
+                return self.reply({'user':{'id':session['sub'], 'name':session['name']}, 'capabilities':capabilities, 'csrfToken': session['csrf_token']})
+            except AuthError as error: return self.reply({'error':error.message}, status=error.status)
+        if raw_path == '/':
+            _sid, session = self.server.bff.session(self)
+            if not session:
+                self.send_response(302); self.send_header('Location', '/auth/login'); self.end_headers(); return
+        # The workspace and all of its static assets are protected too. A UI
+        # response is never evidence of authorization; this is only a second
+        # boundary before the API checks below.
+        try: self.server.bff.authorize(self, 'xii.certificates.access')
+        except AuthError as error: return self.reply({'error':error.message}, status=error.status)
         paths={'/':('web/dist/index.html','text/html; charset=utf-8'),'/style.css':('web/style.css','text/css; charset=utf-8'),'/responsive.css':('web/responsive.css','text/css; charset=utf-8')}
         # Serve only compiled public assets, never arbitrary frontend source paths.
         for asset in (ROOT/'web/dist/static').glob('*'):
@@ -358,12 +532,27 @@ class Handler(BaseHTTPRequestHandler):
                 allowed_origins={f'http://{allowed_host}' for allowed_host in allowed_hosts}
             if host not in allowed_hosts or (origin and origin not in allowed_origins): return self.reply({'error':'Origem não permitida'},status=403)
             payload=json.loads(body)
+            if self.path == '/auth/logout':
+                sid, session = self.server.bff.session(self)
+                if not session: raise AuthError(401, 'Sessão necessária.')
+                provided = self.headers.get('X-CSRF-Token', '')
+                expected_origin = public_origin or f'http://{host}'
+                if origin != expected_origin or not hmac.compare_digest(self.server.bff.store.digest(provided), session['csrf_hash']): raise AuthError(403, 'CSRF inválido.')
+                self.server.bff.store.delete(sid)
+                self.send_response(200); self.server.bff._set_cookie(self, '', expires=True)
+                self.send_header('Content-Type','application/json'); self.send_header('Cache-Control','no-store'); self.end_headers()
+                logout = self.server.bff.issuer + '/protocol/openid-connect/logout?' + urlencode({'client_id':self.server.bff.env['OIDC_CLIENT_ID'], 'post_logout_redirect_uri':self.server.bff.public_origin + '/'})
+                return self.wfile.write(json.dumps({'redirect':logout}).encode())
             if self.path=='/api/analyze':
+                self.server.bff.authorize(self, 'xii.certificates.access', csrf=True)
                 data=base64.b64decode(payload['data'],validate=True)
                 if len(data)>10_000_000: raise ValueError('Limite de upload: 10 MB.')
                 return self.reply(analyze(payload['filename'],data))
-            if self.path=='/api/preview': return self.reply(certificate(payload['record'],payload['issued']),'application/pdf')
+            if self.path=='/api/preview':
+                self.server.bff.authorize(self, 'xii.certificates.access', csrf=True)
+                return self.reply(certificate(payload['record'],payload['issued']),'application/pdf')
             if self.path=='/api/normalize':
+                self.server.bff.authorize(self, 'xii.certificates.access', csrf=True)
                 records=payload['records']
                 if not isinstance(records,list) or len(records)>5000:raise ValueError('Padronize até 5.000 participações por vez.')
                 result=[];changed=0
@@ -373,8 +562,12 @@ class Handler(BaseHTTPRequestHandler):
                     detail=canonical_detail(record['activity'],record['detail']);changed+=detail!=record['detail']
                     result.append({**record,'detail':detail})
                 return self.reply({'records':result,'changed':changed})
-            if self.path=='/api/generate': return self.reply_zip(payload['records'],payload['issued'],payload.get('naming','name'))
+            if self.path=='/api/generate':
+                _sid, session = self.server.bff.authorize(self, 'xii.certificates.issue', csrf=True)
+                validate_batch(payload['records'],payload['issued'],payload.get('naming','name'))
+                return self.reply_zip(payload['records'],payload['issued'],payload.get('naming','name'), lambda: self.server.bff.store.audit(session['sub'], len(payload['records'])))
             return self.reply({'error':'Não encontrado'},status=404)
+        except AuthError as error: self.reply({'error':error.message},status=error.status)
         except ValueError as error: self.reply({'error':str(error) or 'Dados inválidos. Confira os campos preenchidos.'},status=400)
         except (KeyError,TypeError,csv.Error,zipfile.BadZipFile): self.reply({'error':'Dados inválidos. Confira o arquivo e os campos preenchidos.'},status=400)
         except Exception: self.reply({'error':'Não foi possível processar o arquivo. Confira o formato e tente novamente.'},status=400)
@@ -390,8 +583,14 @@ if __name__=='__main__':
         if parsed.scheme not in {'http','https'} or not parsed.netloc or parsed.path not in {'','/'} or parsed.query or parsed.fragment:
             parser.error('--public-origin deve conter apenas esquema e host, por exemplo https://app.example.com')
         args.public_origin=args.public_origin.rstrip('/')
+    try:
+        store = SessionStore(os.environ)
+        server_bff = Bff(store, os.environ, args.public_origin or f'http://{args.host}:{args.port}')
+    except (KeyError, ValueError) as error:
+        parser.error(str(error))
     server=ThreadingHTTPServer((args.host,args.port),Handler)
     server.public_origin=args.public_origin
+    server.bff=server_bff
     print(f'XII Certificados: {args.public_origin or f"http://{args.host}:{args.port}"}',flush=True)
     try: server.serve_forever()
     except KeyboardInterrupt: server.server_close()

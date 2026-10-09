@@ -5,9 +5,13 @@ import { ThemeIcon } from "./Icons";
 export function Header({
   theme,
   toggle,
+  user,
+  onLogout,
 }: {
   theme: Theme;
   toggle: () => void;
+  user: string;
+  onLogout: () => void;
 }) {
   return (
     <header>
@@ -33,6 +37,8 @@ export function Header({
         </a>
       </div>
       <div className="header-tools">
+        <span className="session-user">{user || "Conta Honji"}</span>
+        <button className="theme-toggle" type="button" onClick={onLogout}>Sair</button>
         <Tooltip
           text={theme === "dark" ? "Ativar tema claro." : "Ativar tema escuro."}
         >

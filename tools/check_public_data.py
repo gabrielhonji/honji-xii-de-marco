@@ -5,7 +5,7 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 GIT=['git','-c','safe.directory='+ROOT.as_posix()]
 PUBLIC_DIRS={'assets','web','tools','tests','outputs','.githooks','frontend'}
-PUBLIC_ROOT={'.gitignore','.gitattributes','.dockerignore','Dockerfile','AGENTS.md','DESIGN.md','README.md','QA.md','CHANGELOG.md','requirements.txt','requirements-dev.txt','server.py'}
+PUBLIC_ROOT={'.gitignore','.gitattributes','.dockerignore','Dockerfile','AGENTS.md','DESIGN.md','README.md','QA.md','CHANGELOG.md','requirements.txt','requirements-dev.txt','server.py','honji.integration.json'}
 PUBLIC_WORKFLOWS={'.github/workflows/ci.yml'}
 BRAND_BINARY={'assets/favicon.ico','assets/apple-touch-icon.png','assets/icon-192.png','assets/icon-512.png','assets/social-card.png'}
 

@@ -13,8 +13,31 @@ from pathlib import Path
 from http.server import ThreadingHTTPServer
 import sys
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from server import ACTIVITIES, Handler, ROOT, analyze, canonical_detail, certificate, make_zip, periods, validate_record
+from server import ACTIVITIES, AuthError, Handler, ROOT, analyze, canonical_detail, certificate, make_zip, periods, validate_record
 from pypdf import PdfReader
+
+class FakeAuditStore:
+    @staticmethod
+    def digest(value): return 'fixture-digest'
+    def __init__(self, bff): self.bff=bff; self.last_audit=None
+    def audit(self, subject, count): self.last_audit=(subject, count)
+    def delete(self, sid): self.bff.active=False
+
+class FakeBff:
+    """Authentication boundary double; no personal data or real token is used."""
+    def __init__(self):
+        self.active=True; self.denied=set(); self.store=FakeAuditStore(self)
+        self.issuer='https://identity.example.invalid/realms/honji'
+        self.public_origin='http://fixture.invalid'
+        self.env={'OIDC_CLIENT_ID':'fixture-client'}
+    def authorize(self, handler, action, csrf=False):
+        if not self.active: raise AuthError(401, 'Sessão necessária.')
+        if action in self.denied: raise AuthError(403, 'Acesso não autorizado.')
+        return 'fixture-session', {'sub':'00000000-0000-4000-8000-000000000001', 'name':'Pessoa Fictícia', 'csrf_hash':'fixture-digest', 'csrf_token':'fixture-csrf'}
+    def session(self, handler, touch=False):
+        if not self.active: return None, None
+        return self.authorize(handler, 'xii.certificates.access')
+    def callback(self, handler, query): raise AuthError(400, 'Login expirado ou inválido.')
 
 CSV = ROOT/'tests/fixtures/participacoes-ficticias.csv'
 XLSX = ROOT/'outputs/honji-qa-20261003/participacoes-ficticias.xlsx'
@@ -196,6 +219,7 @@ class HttpRegressionTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.server=ThreadingHTTPServer(('127.0.0.1',0),Handler)
+        cls.server.bff=FakeBff()
         cls.thread=threading.Thread(target=cls.server.serve_forever,daemon=True);cls.thread.start()
         cls.base=f'http://127.0.0.1:{cls.server.server_port}'
 
@@ -207,6 +231,9 @@ class HttpRegressionTest(unittest.TestCase):
         req=urllib.request.Request(self.base+path,data=data,headers={'Content-Type':'application/json',**(headers or {})})
         try:return urllib.request.build_opener(urllib.request.ProxyHandler({})).open(req,timeout=20)
         except urllib.error.HTTPError as error:return error
+
+    def setUp(self):
+        self.server.bff=FakeBff()
 
     def test_public_assets_and_private_files(self):
         for path in ['/','/healthz','/assets/honji-symbol.svg','/assets/xii-icon.svg','/assets/favicon.svg','/site.webmanifest']:
@@ -222,6 +249,30 @@ class HttpRegressionTest(unittest.TestCase):
     def test_origin_and_host_checks(self):
         self.assertEqual(self.request('/api/analyze',{}, {'Origin':'https://example.invalid'}).status,403)
         self.assertEqual(self.request('/api/analyze',{}, {'Host':'example.invalid'}).status,403)
+
+    def test_sessionless_and_invalid_callback_are_rejected(self):
+        self.server.bff.active=False
+        self.assertEqual(self.request('/api/session').status,401)
+        self.assertEqual(self.request('/auth/callback?state=invalid&code=ficticio').status,400)
+
+    def test_central_denial_blocks_access_and_issuance(self):
+        self.server.bff.denied={'xii.certificates.access'}
+        self.assertEqual(self.request('/api/analyze',{}).status,403)
+        self.server.bff.denied={'xii.certificates.issue'}
+        result=analyze(CSV.name,CSV.read_bytes()); record=next(dict(item,approved=True) for item in result['records'] if not item['warning'])
+        self.assertEqual(self.request('/api/generate',{'records':[record],'issued':'2026-10-03','naming':'ra'}).status,403)
+        self.assertIsNone(self.server.bff.store.last_audit)
+
+    def test_authorized_issuance_audits_only_subject_and_quantity(self):
+        result=analyze(CSV.name,CSV.read_bytes()); record=next(dict(item,approved=True) for item in result['records'] if not item['warning'])
+        response=self.request('/api/generate',{'records':[record],'issued':'2026-10-03','naming':'ra'})
+        self.assertEqual(response.status,200); response.read()
+        self.assertEqual(self.server.bff.store.last_audit,('00000000-0000-4000-8000-000000000001',1))
+
+    def test_logout_invalidates_the_local_session(self):
+        headers={'Origin':self.base, 'X-CSRF-Token':'fixture-csrf'}
+        self.assertEqual(self.request('/auth/logout',{},headers).status,200)
+        self.assertEqual(self.request('/api/session').status,401)
 
     def test_explicit_public_origin(self):
         self.server.public_origin='https://xii-gabriel.honji.com.br'

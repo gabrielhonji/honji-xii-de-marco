@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api, message } from "./api";
+import { api, loadSession, logout, message, type Session } from "./api";
 import {
   freshParticipation,
   localDate,
@@ -50,6 +50,14 @@ export function App() {
     downloadRef = useRef<string | null>(null),
     previewRef = useRef<string | null>(null);
   const lotVersion = useRef(0);
+  const [session, setSession] = useState<Session | null>(null);
+  const [sessionError, setSessionError] = useState("");
+  useEffect(() => {
+    loadSession().then((active) => {
+      if (!active) window.location.assign("/auth/login");
+      else setSession(active);
+    }).catch((error) => setSessionError(message(error)));
+  }, []);
   useEffect(() => {
     if (!notice) return;
     const timer = setTimeout(
@@ -297,9 +305,17 @@ export function App() {
       finish();
     }
   }
+  if (sessionError) return <main className="workspace"><p role="alert">{sessionError}</p></main>;
+  if (!session) return <main className="workspace" aria-busy="true" />;
   return (
     <>
-      <Header theme={theme} toggle={toggle} />
+      <Header theme={theme} toggle={toggle} user={session.user.name} onLogout={async () => {
+        const response = await logout();
+        if (response.ok) {
+          const body = (await response.json()) as { redirect: string };
+          window.location.assign(body.redirect);
+        }
+      }} />
       <main>
         <Hero />
         <section id="workspace">

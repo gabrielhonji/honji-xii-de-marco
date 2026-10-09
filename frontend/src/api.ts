@@ -1,9 +1,36 @@
+let csrfToken = "";
+
+export type Session = { user: { id: string; name: string }; capabilities: string[]; csrfToken: string };
+
+export async function loadSession(): Promise<Session | null> {
+  const response = await fetch("/api/session", { credentials: "same-origin" });
+  if (response.status === 401) return null;
+  if (!response.ok) throw new Error("Não foi possível verificar sua sessão.");
+  const session = (await response.json()) as Session;
+  csrfToken = session.csrfToken;
+  return session;
+}
+
+export async function logout(): Promise<Response> {
+  return fetch("/auth/logout", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
+    body: "{}",
+  });
+}
+
 export async function api(path: string, payload: unknown): Promise<Response> {
   const response = await fetch(path, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
     body: JSON.stringify(payload),
   });
+  if (response.status === 401) {
+    window.location.assign("/auth/login");
+    throw new Error("Sua sessão expirou. Redirecionando para o login…");
+  }
   if (!response.ok) {
     let message = "Não foi possível processar os dados.";
     try {

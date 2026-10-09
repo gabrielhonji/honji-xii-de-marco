@@ -3,10 +3,12 @@
 .githooks
 .venv
 __pycache__
-frontend
-outputs
-tests
-tools
+frontend/node_modules
+frontend/.pnpm-store
+outputs/*
+!outputs/honji-qa-20261003/
+!outputs/honji-qa-20261003/*
+!outputs/honji-qa-20261003/participacoes-ficticias.xlsx
 *.pdf
 *.zip
 .env

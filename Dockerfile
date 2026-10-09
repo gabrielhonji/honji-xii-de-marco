@@ -24,7 +24,6 @@ COPY --chown=app:app server.py ./
 COPY --chown=app:app assets/ ./assets/
 COPY --chown=app:app web/ ./web/
 COPY --from=frontend-build --chown=app:app /build/web/dist/ ./web/dist/
-COPY --chown=app:app documentos-certificados/certificate-background.jpg ./documentos-certificados/certificate-background.jpg
 
 USER app
 HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \

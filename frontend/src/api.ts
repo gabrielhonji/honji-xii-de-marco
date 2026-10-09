@@ -5,7 +5,19 @@ export type Session = { user: { id: string; name: string }; capabilities: string
 export async function loadSession(): Promise<Session | null> {
   const response = await fetch("/api/session", { credentials: "same-origin" });
   if (response.status === 401) return null;
-  if (!response.ok) throw new Error("Não foi possível verificar sua sessão.");
+  if (!response.ok) {
+    let detail = "Não foi possível verificar sua sessão.";
+    try {
+      const failure = (await response.json()) as { error?: unknown; code?: unknown };
+      if (typeof failure.error === "string" && failure.error.trim()) detail = failure.error;
+      if (typeof failure.code === "string" && /^[a-z0-9_]{1,64}$/.test(failure.code)) {
+        detail += ` (${failure.code})`;
+      }
+    } catch {
+      /* Preserve the generic message for non-JSON proxy failures. */
+    }
+    throw new Error(detail);
+  }
   const session = (await response.json()) as Session;
   csrfToken = session.csrfToken;
   return session;

@@ -18,6 +18,9 @@ from pypdf import PdfReader, PdfWriter
 ROOT = Path(__file__).resolve().parent
 PRIVATE_TEMPLATE_PATH = ROOT/'documentos-certificados/certificate-background.jpg'
 
+def access_page():
+    return '''<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Acessar XII — Honji</title><style>:root{color-scheme:light dark;font-family:Inter,system-ui,sans-serif;background:#f4f0e8;color:#173638}*{box-sizing:border-box}body{min-height:100vh;margin:0;display:grid;place-items:center;padding:24px;background-image:linear-gradient(#1b626214 1px,transparent 1px),linear-gradient(90deg,#1b626214 1px,transparent 1px);background-size:32px 32px}.gate{width:min(680px,100%);padding:clamp(28px,6vw,64px);background:#fffaf3;border:1px solid #b8cbc5;box-shadow:0 24px 70px #1238}.brand{font-weight:800;letter-spacing:.16em;color:#176468}.eyebrow{margin:48px 0 12px;font-size:.75rem;font-weight:800;letter-spacing:.14em;color:#8b502e;text-transform:uppercase}h1{max-width:12ch;margin:0;font:clamp(2.3rem,7vw,4.8rem)/.98 Georgia,serif}p{max-width:56ch;line-height:1.7;color:#526766}.actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:32px}a{padding:13px 18px;border:1px solid #176468;color:#176468;text-decoration:none;font-weight:750}.primary{background:#176468;color:#fffaf3}.note{margin-top:30px;padding-top:22px;border-top:1px solid #cad7d2;font-size:.9rem}@media(prefers-color-scheme:dark){:root{background:#102426;color:#edf5f0}.gate{background:#173033;border-color:#416461}.brand,a{color:#75c9c5}.primary{background:#75c9c5;color:#102426}p{color:#bad0ca}}</style></head><body><main class="gate"><div class="brand">HONJI</div><div class="eyebrow">Projeto protegido</div><h1>XII Certificados</h1><p>Revise participações, padronize registros e emita certificados do projeto XII.</p><p>Para continuar, entre com uma conta Honji que tenha acesso a este projeto.</p><div class="actions"><a class="primary" href="/auth/login">Entrar com Honji →</a><a href="https://gabriel.honji.com.br/#solicitar-acesso">Solicitar acesso</a></div><p class="note">Você será direcionado ao acesso Honji e voltará para o XII depois de entrar.</p></main></body></html>'''.encode()
+
 HOUR = 60 * 60
 ABSOLUTE_SESSION_SECONDS = 12 * HOUR
 IDLE_SESSION_SECONDS = HOUR
@@ -502,6 +505,11 @@ class Handler(BaseHTTPRequestHandler):
         if raw_path == '/auth/callback':
             try: return self.server.bff.callback(self, parse_qs(urlsplit(self.path).query, keep_blank_values=True))
             except AuthError as error: return self.reply_auth_error(error)
+        if raw_path == '/acesso':
+            _sid, session = self.server.bff.session(self)
+            if session:
+                self.send_response(302); self.send_header('Location', '/'); self.end_headers(); return
+            return self.reply(access_page(), 'text/html; charset=utf-8')
         if raw_path == '/api/session':
             try:
                 _sid, session = self.server.bff.authorize(self, 'xii.certificates.access')
@@ -516,7 +524,7 @@ class Handler(BaseHTTPRequestHandler):
         if raw_path == '/':
             _sid, session = self.server.bff.session(self)
             if not session:
-                self.send_response(302); self.send_header('Location', '/auth/login'); self.end_headers(); return
+                self.send_response(302); self.send_header('Location', '/acesso'); self.end_headers(); return
         # A valid local session may load the inert UI shell. Every data or
         # issuance API still asks the central service on every request and
         # fails closed; dependency errors must not replace the front with JSON.

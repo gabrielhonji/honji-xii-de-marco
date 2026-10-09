@@ -13,7 +13,7 @@ from pathlib import Path
 from http.server import ThreadingHTTPServer
 import sys
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from server import ACTIVITIES, AuthError, Bff, Handler, ROOT, _issuer, analyze, canonical_detail, certificate, make_zip, periods, validate_record
+from server import ACTIVITIES, AuthError, Bff, Handler, ROOT, _issuer, access_page, analyze, canonical_detail, certificate, make_zip, periods, validate_record
 from pypdf import PdfReader
 
 class FakeAuditStore:
@@ -65,6 +65,12 @@ def example(**changes):
     return record
 
 class ImportRegressionTest(unittest.TestCase):
+    def test_access_gate_explains_project_login_and_request_path(self):
+        page=access_page().decode()
+        self.assertIn('XII Certificados',page)
+        self.assertIn('href="/auth/login"',page)
+        self.assertIn('https://gabriel.honji.com.br/#solicitar-acesso',page)
+
     def test_oidc_issuer_requires_the_exact_honji_realm(self):
         self.assertEqual(_issuer('https://acesso-gabriel.honji.com.br/realms/honji'),
                          'https://acesso-gabriel.honji.com.br/realms/honji')

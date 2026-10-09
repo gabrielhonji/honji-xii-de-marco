@@ -27,8 +27,15 @@ class AuthError(Exception):
 
 def _origin(value, variable):
     parsed = urlsplit(value)
-    if parsed.scheme not in {'http', 'https'} or not parsed.netloc or parsed.path not in {'', '/'} or parsed.query or parsed.fragment:
+    if parsed.scheme not in {'http', 'https'} or not parsed.netloc or parsed.username or parsed.password or parsed.path not in {'', '/'} or parsed.query or parsed.fragment:
         raise ValueError(f'{variable} deve conter apenas esquema e host')
+    return value.rstrip('/')
+
+def _issuer(value):
+    parsed = urlsplit(value)
+    if parsed.scheme not in {'http', 'https'} or not parsed.netloc or parsed.username or parsed.password \
+            or parsed.path != '/realms/honji' or parsed.query or parsed.fragment:
+        raise ValueError('OIDC_ISSUER deve ser a URL exata do realm honji')
     return value.rstrip('/')
 
 class SessionStore:
@@ -95,7 +102,7 @@ class Bff:
     """OIDC boundary: validates ID tokens and asks the central service per request."""
     def __init__(self, store, env, public_origin):
         self.store, self.env, self.public_origin = store, env, public_origin
-        self.issuer = _origin(env.get('OIDC_ISSUER', 'https://acesso-gabriel.honji.com.br/realms/honji'), 'OIDC_ISSUER')
+        self.issuer = _issuer(env.get('OIDC_ISSUER', 'https://acesso-gabriel.honji.com.br/realms/honji'))
         self.identity_origin = _origin(env.get('IDENTITY_INTERNAL_ORIGIN', 'http://app-gabriel-identity:8080'), 'IDENTITY_INTERNAL_ORIGIN')
         self.authorization_origin = _origin(env['AUTHORIZATION_SERVICE_ORIGIN'], 'AUTHORIZATION_SERVICE_ORIGIN')
         for required in ('OIDC_CLIENT_ID', 'OIDC_CLIENT_SECRET', 'AUTHORIZATION_SERVICE_CLIENT_ID', 'AUTHORIZATION_SERVICE_CLIENT_SECRET'):

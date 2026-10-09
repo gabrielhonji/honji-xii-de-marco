@@ -13,7 +13,7 @@ from pathlib import Path
 from http.server import ThreadingHTTPServer
 import sys
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from server import ACTIVITIES, AuthError, Handler, ROOT, analyze, canonical_detail, certificate, make_zip, periods, validate_record
+from server import ACTIVITIES, AuthError, Handler, ROOT, _issuer, analyze, canonical_detail, certificate, make_zip, periods, validate_record
 from pypdf import PdfReader
 
 class FakeAuditStore:
@@ -48,6 +48,14 @@ def example(**changes):
     return record
 
 class ImportRegressionTest(unittest.TestCase):
+    def test_oidc_issuer_requires_the_exact_honji_realm(self):
+        self.assertEqual(_issuer('https://acesso-gabriel.honji.com.br/realms/honji'),
+                         'https://acesso-gabriel.honji.com.br/realms/honji')
+        for value in ['https://acesso-gabriel.honji.com.br',
+                      'https://acesso-gabriel.honji.com.br/realms/master',
+                      'https://user:password@acesso-gabriel.honji.com.br/realms/honji']:
+            with self.assertRaises(ValueError): _issuer(value)
+
     def response(self,column,value):
         output=StringIO();writer=csv.writer(output);writer.writerows([['Nome Completo','RA',column],['Participante Fictício','0012345',value]])
         return analyze('exemplo-ficticio.csv',output.getvalue().encode())['records']

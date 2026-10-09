@@ -175,9 +175,13 @@ class Bff:
         except HTTPError as error:
             if error.code == 403: raise AuthError(403, 'A integração XII precisa de revisão administrativa.', 'integration_configuration_mismatch')
             if error.code == 401: raise AuthError(503, 'A credencial da integração não foi aceita.', 'integration_service_unauthorized')
-            raise AuthError(503, 'O serviço central de autorização está indisponível.', 'authorization_dependency_failed')
-        except (URLError, KeyError, ValueError, TimeoutError, json.JSONDecodeError):
-            raise AuthError(503, 'O serviço central de autorização está indisponível.', 'authorization_dependency_failed')
+            if error.code == 404: raise AuthError(503, 'A rota central de autorização não foi encontrada.', 'authorization_route_not_found')
+            if 500 <= error.code <= 599: raise AuthError(503, 'O serviço central de autorização encontrou uma falha.', 'authorization_service_failed')
+            raise AuthError(503, 'O serviço central de autorização retornou uma resposta inesperada.', 'authorization_unexpected_response')
+        except (URLError, TimeoutError):
+            raise AuthError(503, 'Não foi possível alcançar o serviço central de autorização.', 'authorization_service_unreachable')
+        except (KeyError, ValueError, json.JSONDecodeError):
+            raise AuthError(503, 'O serviço central de autorização retornou uma resposta inválida.', 'authorization_invalid_response')
         if allowed is not True: raise AuthError(403, 'Seu acesso à XII não está liberado.', 'capability_denied')
         return sid, session
 

@@ -82,6 +82,10 @@ class ImportRegressionTest(unittest.TestCase):
             ([urllib.error.HTTPError('http://identity',401,'',{},None)],503,'service_credentials_rejected'),
             ([JsonResponse(b'{"access_token":"fixture"}'),urllib.error.HTTPError('http://authorization',401,'',{},None)],503,'integration_service_unauthorized'),
             ([JsonResponse(b'{"access_token":"fixture"}'),urllib.error.HTTPError('http://authorization',403,'',{},None)],403,'integration_configuration_mismatch'),
+            ([JsonResponse(b'{"access_token":"fixture"}'),urllib.error.HTTPError('http://authorization',404,'',{},None)],503,'authorization_route_not_found'),
+            ([JsonResponse(b'{"access_token":"fixture"}'),urllib.error.HTTPError('http://authorization',500,'',{},None)],503,'authorization_service_failed'),
+            ([JsonResponse(b'{"access_token":"fixture"}'),urllib.error.URLError('fixture unavailable')],503,'authorization_service_unreachable'),
+            ([JsonResponse(b'{"access_token":"fixture"}'),JsonResponse(b'not-json')],503,'authorization_invalid_response'),
             ([JsonResponse(b'{"access_token":"fixture"}'),JsonResponse(b'{"allowed":false}')],403,'capability_denied'),
         ]
         for responses,status,code in cases:

@@ -13,7 +13,7 @@ from pathlib import Path
 from http.server import ThreadingHTTPServer
 import sys
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from server import ACTIVITIES, AuthError, Handler, ROOT, _issuer, analyze, canonical_detail, certificate, make_zip, periods, validate_record
+from server import ACTIVITIES, AuthError, Bff, Handler, ROOT, _issuer, analyze, canonical_detail, certificate, make_zip, periods, validate_record
 from pypdf import PdfReader
 
 class FakeAuditStore:
@@ -39,6 +39,23 @@ class FakeBff:
         return self.authorize(handler, 'xii.certificates.access')
     def callback(self, handler, query): raise AuthError(400, 'Login expirado ou inválido.')
 
+class AuthorizationStore:
+    @staticmethod
+    def digest(value): return 'digest'
+    @staticmethod
+    def get(_sid, touch=False):
+        return {'sub':'00000000-0000-4000-8000-000000000001', 'name':'Pessoa Fictícia', 'csrf_hash':'digest', 'csrf_token':'fixture-csrf'}
+
+class AuthorizationHandler:
+    class Headers(dict):
+        def get_all(self,name,default=None):
+            value=self.get(name); return [value] if value is not None else (default or [])
+    headers=Headers({'Cookie':'xii.sid=' + 'A'*43})
+
+class JsonResponse(BytesIO):
+    def __enter__(self): return self
+    def __exit__(self,*_args): self.close()
+
 CSV = ROOT/'tests/fixtures/participacoes-ficticias.csv'
 XLSX = ROOT/'outputs/honji-qa-20261003/participacoes-ficticias.xlsx'
 
@@ -55,6 +72,28 @@ class ImportRegressionTest(unittest.TestCase):
                       'https://acesso-gabriel.honji.com.br/realms/master',
                       'https://user:password@acesso-gabriel.honji.com.br/realms/honji']:
             with self.assertRaises(ValueError): _issuer(value)
+
+    def test_authorization_failures_keep_safe_stage_and_status(self):
+        env={'OIDC_CLIENT_ID':'browser','OIDC_CLIENT_SECRET':'x'*32,
+             'AUTHORIZATION_SERVICE_CLIENT_ID':'service','AUTHORIZATION_SERVICE_CLIENT_SECRET':'y'*32,
+             'AUTHORIZATION_SERVICE_ORIGIN':'http://authorization.internal'}
+        bff=Bff(AuthorizationStore(),env,'http://fixture.invalid')
+        cases=[
+            ([urllib.error.HTTPError('http://identity',401,'',{},None)],503,'service_credentials_rejected'),
+            ([JsonResponse(b'{"access_token":"fixture"}'),urllib.error.HTTPError('http://authorization',401,'',{},None)],503,'integration_service_unauthorized'),
+            ([JsonResponse(b'{"access_token":"fixture"}'),urllib.error.HTTPError('http://authorization',403,'',{},None)],403,'integration_configuration_mismatch'),
+            ([JsonResponse(b'{"access_token":"fixture"}'),JsonResponse(b'{"allowed":false}')],403,'capability_denied'),
+        ]
+        for responses,status,code in cases:
+            with self.subTest(code=code):
+                queue=iter(responses)
+                def request(*_args,**_kwargs):
+                    response=next(queue)
+                    if isinstance(response,Exception): raise response
+                    return response
+                bff._request=request
+                with self.assertRaises(AuthError) as raised:bff.authorize(AuthorizationHandler(),'xii.certificates.access')
+                self.assertEqual((raised.exception.status,raised.exception.code),(status,code))
 
     def response(self,column,value):
         output=StringIO();writer=csv.writer(output);writer.writerows([['Nome Completo','RA',column],['Participante Fictício','0012345',value]])

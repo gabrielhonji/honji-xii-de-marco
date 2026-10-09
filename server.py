@@ -23,7 +23,7 @@ ABSOLUTE_SESSION_SECONDS = 12 * HOUR
 IDLE_SESSION_SECONDS = HOUR
 
 class AuthError(Exception):
-    def __init__(self, status, message): self.status, self.message = status, message
+    def __init__(self, status, message, code=None): self.status, self.message, self.code = status, message, code
 
 def _origin(value, variable):
     parsed = urlsplit(value)
@@ -162,11 +162,23 @@ class Bff:
             if origin != self.public_origin or not hmac.compare_digest(self.store.digest(provided), session['csrf_hash']): raise AuthError(403, 'CSRF inválido.')
         try:
             payload = urlencode({'grant_type':'client_credentials','client_id':self.env['AUTHORIZATION_SERVICE_CLIENT_ID'],'client_secret':self.env['AUTHORIZATION_SERVICE_CLIENT_SECRET']}).encode()
-            token = json.load(self._request(self.identity_origin + '/realms/honji/protocol/openid-connect/token', payload, {'Content-Type':'application/x-www-form-urlencoded'}))['access_token']
+            token_response = self._request(self.identity_origin + '/realms/honji/protocol/openid-connect/token', payload, {'Content-Type':'application/x-www-form-urlencoded'})
+            token = json.load(token_response)['access_token']
+        except HTTPError as error:
+            code = 'service_credentials_rejected' if error.code in {400, 401, 403} else 'identity_token_unavailable'
+            raise AuthError(503, 'Não foi possível autenticar a integração.', code)
+        except (URLError, KeyError, ValueError, TimeoutError, json.JSONDecodeError):
+            raise AuthError(503, 'Não foi possível autenticar a integração.', 'identity_token_unavailable')
+        try:
             decision = self._request(self.authorization_origin + '/internal/authorization/decisions', json.dumps({'integrationId':'xii-certificate-generator','userId':session['sub'],'resource':{'projectId':'XII'},'action':action}).encode(), {'Content-Type':'application/json','Authorization':'Bearer '+token})
-            if not json.load(decision).get('allowed'): raise AuthError(403, 'Acesso não autorizado.')
-        except AuthError: raise
-        except (HTTPError, URLError, KeyError, ValueError, TimeoutError): raise AuthError(503, 'Autorização indisponível.')
+            allowed = json.load(decision).get('allowed')
+        except HTTPError as error:
+            if error.code == 403: raise AuthError(403, 'A integração XII precisa de revisão administrativa.', 'integration_configuration_mismatch')
+            if error.code == 401: raise AuthError(503, 'A credencial da integração não foi aceita.', 'integration_service_unauthorized')
+            raise AuthError(503, 'O serviço central de autorização está indisponível.', 'authorization_dependency_failed')
+        except (URLError, KeyError, ValueError, TimeoutError, json.JSONDecodeError):
+            raise AuthError(503, 'O serviço central de autorização está indisponível.', 'authorization_dependency_failed')
+        if allowed is not True: raise AuthError(403, 'Seu acesso à XII não está liberado.', 'capability_denied')
         return sid, session
 
 def private_template_pdf():
@@ -466,6 +478,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('Cache-Control','no-store'); self.send_header('X-Content-Type-Options','nosniff')
         self.send_header('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob:; frame-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'")
         self.end_headers(); self.wfile.write(body)
+    def reply_auth_error(self,error):
+        return self.reply({'error':error.message, **({'code':error.code} if error.code else {})}, status=error.status)
     def reply_zip(self,records,issued,naming,audit=None):
         validate_batch(records,issued,naming)
         self.send_response(200); self.send_header('Content-Type','application/zip')
@@ -480,10 +494,10 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply({'status':'ok'})
         if raw_path == '/auth/login':
             try: return self.server.bff.login(self)
-            except AuthError as error: return self.reply({'error':error.message}, status=error.status)
+            except AuthError as error: return self.reply_auth_error(error)
         if raw_path == '/auth/callback':
             try: return self.server.bff.callback(self, parse_qs(urlsplit(self.path).query, keep_blank_values=True))
-            except AuthError as error: return self.reply({'error':error.message}, status=error.status)
+            except AuthError as error: return self.reply_auth_error(error)
         if raw_path == '/api/session':
             try:
                 _sid, session = self.server.bff.authorize(self, 'xii.certificates.access')
@@ -494,16 +508,16 @@ class Handler(BaseHTTPRequestHandler):
                 except AuthError as error:
                     if error.status != 403: raise
                 return self.reply({'user':{'id':session['sub'], 'name':session['name']}, 'capabilities':capabilities, 'csrfToken': session['csrf_token']})
-            except AuthError as error: return self.reply({'error':error.message}, status=error.status)
+            except AuthError as error: return self.reply_auth_error(error)
         if raw_path == '/':
             _sid, session = self.server.bff.session(self)
             if not session:
                 self.send_response(302); self.send_header('Location', '/auth/login'); self.end_headers(); return
-        # The workspace and all of its static assets are protected too. A UI
-        # response is never evidence of authorization; this is only a second
-        # boundary before the API checks below.
-        try: self.server.bff.authorize(self, 'xii.certificates.access')
-        except AuthError as error: return self.reply({'error':error.message}, status=error.status)
+        # A valid local session may load the inert UI shell. Every data or
+        # issuance API still asks the central service on every request and
+        # fails closed; dependency errors must not replace the front with JSON.
+        _sid, session = self.server.bff.session(self)
+        if not session: return self.reply_auth_error(AuthError(401, 'Sessão necessária.', 'session_required'))
         paths={'/':('web/dist/index.html','text/html; charset=utf-8'),'/style.css':('web/style.css','text/css; charset=utf-8'),'/responsive.css':('web/responsive.css','text/css; charset=utf-8')}
         # Serve only compiled public assets, never arbitrary frontend source paths.
         for asset in (ROOT/'web/dist/static').glob('*'):
@@ -574,7 +588,7 @@ class Handler(BaseHTTPRequestHandler):
                 validate_batch(payload['records'],payload['issued'],payload.get('naming','name'))
                 return self.reply_zip(payload['records'],payload['issued'],payload.get('naming','name'), lambda: self.server.bff.store.audit(session['sub'], len(payload['records'])))
             return self.reply({'error':'Não encontrado'},status=404)
-        except AuthError as error: self.reply({'error':error.message},status=error.status)
+        except AuthError as error: self.reply_auth_error(error)
         except ValueError as error: self.reply({'error':str(error) or 'Dados inválidos. Confira os campos preenchidos.'},status=400)
         except (KeyError,TypeError,csv.Error,zipfile.BadZipFile): self.reply({'error':'Dados inválidos. Confira o arquivo e os campos preenchidos.'},status=400)
         except Exception: self.reply({'error':'Não foi possível processar o arquivo. Confira o formato e tente novamente.'},status=400)

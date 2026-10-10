@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Theme } from "../model";
 import { Tooltip } from "./Tooltip";
 import { ThemeIcon } from "./Icons";
@@ -13,6 +13,17 @@ export function Header({
   user: string;
   onLogout: () => void;
 }) {
+  const [accountOpen, setAccountOpen] = useState(false);
+  const account = useRef<HTMLDivElement>(null);
+  const initials = user.trim().split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]).join('').toUpperCase() || 'XII';
+  useEffect(() => {
+    if (!accountOpen) return;
+    const outside = (event: PointerEvent) => { if (!account.current?.contains(event.target as Node)) setAccountOpen(false); };
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') setAccountOpen(false); };
+    document.addEventListener('pointerdown', outside);
+    document.addEventListener('keydown', escape);
+    return () => { document.removeEventListener('pointerdown', outside); document.removeEventListener('keydown', escape); };
+  }, [accountOpen]);
   return (
     <header>
       <div className="brand-cluster">
@@ -37,8 +48,6 @@ export function Header({
         </a>
       </div>
       <div className="header-tools">
-        <span className="session-user">{user || "Conta Honji"}</span>
-        <button className="theme-toggle" type="button" onClick={onLogout}>Sair</button>
         <Tooltip
           text={theme === "dark" ? "Ativar tema claro." : "Ativar tema escuro."}
         >
@@ -54,11 +63,12 @@ export function Header({
             <span id="theme-icon" aria-hidden="true">
               <ThemeIcon theme={theme} />
             </span>
-            <span id="theme-label">
-              {theme === "dark" ? "Claro" : "Escuro"}
-            </span>
           </button>
         </Tooltip>
+        <div className="account-control" ref={account}>
+          <button className="account-avatar" type="button" aria-label={`Abrir conta de ${user || 'Conta Honji'}`} aria-expanded={accountOpen} onClick={() => setAccountOpen(value => !value)}>{initials}</button>
+          {accountOpen && <div className="account-panel"><a className="account-name" href="https://gabriel.honji.com.br/#perfil">{user || 'Conta Honji'}<span>Editar perfil</span></a><a href="https://gabriel.honji.com.br/#acesso">Área de acesso</a><button type="button" onClick={onLogout}>Sair</button></div>}
+        </div>
       </div>
     </header>
   );
@@ -145,7 +155,7 @@ export function Footer() {
             gabriel.honji
           </a>
           <span className="footer-separator" aria-hidden="true">·</span>
-          <span>VERSÃO {__APP_VERSION__}</span>
+          <span>VERSÃO {__APP_VERSION__} · {__APP_RELEASE__}</span>
           <span className="footer-separator" aria-hidden="true">·</span>
           <span>UTFPR / APUCARANA</span>
         </div>

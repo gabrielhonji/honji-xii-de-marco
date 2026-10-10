@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api, loadSession, logout, message, type Session } from "./api";
+import { api, loadSession, logout, message, setDebugView, type DebugMode, type Session } from "./api";
 import {
   freshParticipation,
   localDate,
@@ -318,6 +318,7 @@ export function App() {
       }} />
       <main>
         <Hero />
+        {session.debugView?.mode !== 'real' && !session.capabilities.includes('xii.certificates.access') && <section className="debug-access-note" role="status"><strong>Este perfil não acessa o gerador da XII.</strong><p>A visualização confirma a restrição aplicada pelo backend para Direção de Eventos e membros sem delegação da Secretaria.</p></section>}
         <section id="workspace">
           <div className="section-head">
             <div>
@@ -385,6 +386,9 @@ export function App() {
         </section>
       </main>
       <Footer />
+      {session.debugView?.available && <aside className="debug-view-switcher" aria-label="Visualização de depuração"><span>Visualizar como</span><div>{([
+        ['real','Minha conta'],['admin','Admin / Presidência'],['events_director','Diretor Eventos'],['member','Membro'],
+      ] as [DebugMode,string][]).map(([mode,label])=><button type="button" key={mode} aria-pressed={session.debugView?.mode===mode} onClick={async()=>{await setDebugView(mode);location.reload();}}>{label}</button>)}</div></aside>}
       {reviewDuplicates && <Duplicates records={records} duplicates={duplicates} busy={busy}
         onChoose={chooseDuplicate} onClose={() => setReviewDuplicates(false)} />}
       {current && (

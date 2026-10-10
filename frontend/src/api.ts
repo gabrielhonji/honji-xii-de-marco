@@ -1,6 +1,7 @@
 let csrfToken = "";
 
-export type Session = { user: { id: string; name: string }; capabilities: string[]; csrfToken: string };
+export type DebugMode = 'real' | 'admin' | 'events_director' | 'member';
+export type Session = { user: { id: string; name: string }; capabilities: string[]; csrfToken: string; debugView?: { available: boolean; mode: DebugMode } };
 
 export async function loadSession(): Promise<Session | null> {
   const response = await fetch("/api/session", { credentials: "same-origin" });
@@ -30,6 +31,12 @@ export async function logout(): Promise<Response> {
     headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
     body: "{}",
   });
+}
+
+export async function setDebugView(mode: DebugMode): Promise<void> {
+  const response = await fetch('/api/debug-view', { method: 'POST', credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken }, body: JSON.stringify({ mode }) });
+  if (!response.ok) throw new Error('Não foi possível trocar a visualização.');
 }
 
 export async function api(path: string, payload: unknown): Promise<Response> {

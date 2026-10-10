@@ -67,6 +67,9 @@ class SessionStore:
             try: cur.execute('ALTER TABLE xii_sessions ADD COLUMN csrf_token VARCHAR(64) NOT NULL DEFAULT "" AFTER csrf_hash')
             except self.pymysql.err.OperationalError as error:
                 if error.args[0] != 1060: raise
+            try: cur.execute("ALTER TABLE xii_sessions ADD COLUMN debug_mode ENUM('real','admin','events_director','member') NOT NULL DEFAULT 'real'")
+            except self.pymysql.err.OperationalError as error:
+                if error.args[0] != 1060: raise
             cur.execute('DELETE FROM xii_sessions WHERE expires_at < UNIX_TIMESTAMP()')
     @staticmethod
     def digest(value): return hashlib.sha256(value.encode()).hexdigest()
@@ -87,14 +90,17 @@ class SessionStore:
     def get(self, sid, touch=False):
         now = int(time.time())
         with self.connect().cursor() as cur:
-            cur.execute('SELECT subject, display_name, csrf_hash, csrf_token, created_at, last_activity_at, expires_at FROM xii_sessions WHERE session_hash=%s', (self.digest(sid),))
+            cur.execute('SELECT subject, display_name, csrf_hash, csrf_token, created_at, last_activity_at, expires_at, debug_mode FROM xii_sessions WHERE session_hash=%s', (self.digest(sid),))
             row = cur.fetchone()
             if not row: return None
-            subject, display_name, csrf_hash, csrf_token, created, activity, expires = row
+            subject, display_name, csrf_hash, csrf_token, created, activity, expires, debug_mode = row
             if not subject or now > expires or now - activity >= IDLE_SESSION_SECONDS:
                 cur.execute('DELETE FROM xii_sessions WHERE session_hash=%s', (self.digest(sid),)); return None
             if touch: cur.execute('UPDATE xii_sessions SET last_activity_at=%s WHERE session_hash=%s', (now, self.digest(sid)))
-        return {'sub': subject, 'name': display_name or '', 'csrf_hash': csrf_hash, 'csrf_token': csrf_token}
+        return {'sub': subject, 'name': display_name or '', 'csrf_hash': csrf_hash, 'csrf_token': csrf_token, 'debug_mode': debug_mode}
+    def set_debug_mode(self, sid, mode):
+        with self.connect().cursor() as cur:
+            cur.execute('UPDATE xii_sessions SET debug_mode=%s WHERE session_hash=%s', (mode, self.digest(sid)))
     def delete(self, sid):
         with self.connect().cursor() as cur: cur.execute('DELETE FROM xii_sessions WHERE session_hash=%s', (self.digest(sid),))
     def audit(self, subject, count):
@@ -160,9 +166,15 @@ class Bff:
     def authorize(self, handler, action, csrf=False):
         sid, session = self.session(handler, touch=True)
         if not session: raise AuthError(401, 'Sessão necessária.')
+        debug_mode = session.get('debug_mode', 'real')
         if csrf:
             origin = handler.headers.get('Origin'); provided = handler.headers.get('X-CSRF-Token', '')
             if origin != self.public_origin or not hmac.compare_digest(self.store.digest(provided), session['csrf_hash']): raise AuthError(403, 'CSRF inválido.')
+            if debug_mode != 'real': raise AuthError(403, 'Perfis de depuração são somente leitura.', 'debug_read_only')
+        requested_action = action
+        if debug_mode != 'real':
+            if session['sub'] != self.env.get('HONJI_ADMIN_ID'): raise AuthError(403, 'Modo de depuração indisponível.', 'debug_forbidden')
+            action = 'project.access'
         try:
             payload = urlencode({'grant_type':'client_credentials','client_id':self.env['AUTHORIZATION_SERVICE_CLIENT_ID'],'client_secret':self.env['AUTHORIZATION_SERVICE_CLIENT_SECRET']}).encode()
             token_response = self._request(self.identity_origin + '/realms/honji/protocol/openid-connect/token', payload, {'Content-Type':'application/x-www-form-urlencoded'})
@@ -186,6 +198,9 @@ class Bff:
         except (KeyError, ValueError, json.JSONDecodeError):
             raise AuthError(503, 'O serviço central de autorização retornou uma resposta inválida.', 'authorization_invalid_response')
         if allowed is not True: raise AuthError(403, 'Seu acesso à XII não está liberado.', 'capability_denied')
+        if debug_mode != 'real':
+            local = debug_mode == 'admin' and requested_action in {'xii.certificates.access', 'xii.certificates.issue'}
+            if not local: raise AuthError(403, 'Este perfil não possui acesso ao gerador da XII.', 'debug_capability_denied')
         return sid, session
 
 def private_template_pdf():
@@ -521,8 +536,14 @@ class Handler(BaseHTTPRequestHandler):
                     capabilities.append('xii.certificates.issue')
                 except AuthError as error:
                     if error.status != 403: raise
-                return self.reply({'user':{'id':session['sub'], 'name':session['name']}, 'capabilities':capabilities, 'csrfToken': session['csrf_token']})
-            except AuthError as error: return self.reply_auth_error(error)
+                mode=session['debug_mode']; names={'admin':'Administração / Presidência','events_director':'Direção de Eventos','member':'Membro'}
+                return self.reply({'user':{'id':session['sub'], 'name':names.get(mode,session['name'])}, 'capabilities':capabilities, 'csrfToken': session['csrf_token'], 'debugView':{'available':session['sub']==self.server.bff.env.get('HONJI_ADMIN_ID'),'mode':mode}})
+            except AuthError as error:
+                _sid, session = self.server.bff.session(self)
+                if error.code=='debug_capability_denied' and session:
+                    names={'events_director':'Direção de Eventos','member':'Membro'}
+                    return self.reply({'user':{'id':session['sub'],'name':names.get(session['debug_mode'],session['name'])},'capabilities':[],'csrfToken':session['csrf_token'],'debugView':{'available':True,'mode':session['debug_mode']}})
+                return self.reply_auth_error(error)
         if raw_path == '/':
             _sid, session = self.server.bff.session(self)
             if not session:
@@ -578,6 +599,16 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_header('Content-Type','application/json'); self.send_header('Cache-Control','no-store'); self.end_headers()
                 logout = self.server.bff.issuer + '/protocol/openid-connect/logout?' + urlencode({'client_id':self.server.bff.env['OIDC_CLIENT_ID'], 'post_logout_redirect_uri':self.server.bff.public_origin + '/'})
                 return self.wfile.write(json.dumps({'redirect':logout}).encode())
+            if self.path == '/api/debug-view':
+                sid, session = self.server.bff.session(self)
+                if not session or session['sub'] != self.server.bff.env.get('HONJI_ADMIN_ID'): raise AuthError(403, 'Modo de depuração indisponível.')
+                provided = self.headers.get('X-CSRF-Token', '')
+                expected_origin = public_origin or f'http://{host}'
+                if origin != expected_origin or not hmac.compare_digest(self.server.bff.store.digest(provided), session['csrf_hash']): raise AuthError(403, 'CSRF inválido.')
+                mode=payload.get('mode')
+                if mode not in {'real','admin','events_director','member'}: raise ValueError('Visualização inválida.')
+                self.server.bff.store.set_debug_mode(sid,mode)
+                return self.reply({'mode':mode})
             if self.path=='/api/analyze':
                 self.server.bff.authorize(self, 'xii.certificates.access', csrf=True)
                 data=base64.b64decode(payload['data'],validate=True)

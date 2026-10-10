@@ -69,6 +69,7 @@ class ImportRegressionTest(unittest.TestCase):
         page=access_page().decode()
         self.assertIn('XII Certificados',page)
         self.assertIn('href="/auth/login"',page)
+        self.assertIn('href="/access.css"',page)
         self.assertIn('https://gabriel.honji.com.br/#solicitar-acesso',page)
 
     def test_oidc_issuer_requires_the_exact_honji_realm(self):

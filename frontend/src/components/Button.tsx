@@ -19,7 +19,7 @@ export function Button({
   const button = (
     <button
       type="button"
-      className={`${variant === "quiet" ? "" : variant} min-h-11 transition-colors duration-150 disabled:cursor-wait focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-honji-accent ${className}`}
+      className={`${variant === "quiet" ? "" : variant} min-h-11 transition-colors duration-150 disabled:cursor-default disabled:pointer-events-none focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-honji-accent ${className}`}
       {...props}
     >
       {icon && <Icon name={icon} />}

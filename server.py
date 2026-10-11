@@ -531,6 +531,14 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply((ROOT/'web/access.css').read_bytes(), 'text/css; charset=utf-8')
         if raw_path == '/access.js':
             return self.reply(ACCESS_SCRIPT, 'text/javascript; charset=utf-8')
+        public_access_assets = {
+            '/assets/favicon.svg': ('favicon.svg', 'image/svg+xml'),
+            '/assets/honji-symbol.svg': ('honji-symbol.svg', 'image/svg+xml'),
+            '/assets/xii-icon.svg': ('xii-icon.svg', 'image/svg+xml'),
+        }
+        if raw_path in public_access_assets:
+            asset, kind = public_access_assets[raw_path]
+            return self.reply((ROOT/'assets'/asset).read_bytes(), kind)
         if raw_path == '/api/session':
             try:
                 _sid, session = self.server.bff.authorize(self, 'xii.certificates.access')

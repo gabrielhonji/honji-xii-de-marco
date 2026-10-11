@@ -9,7 +9,7 @@ body{background:transparent;min-height:100vh;min-height:100svh;width:100%;max-wi
 ::-webkit-scrollbar-thumb:hover{background:var(--muted)}
 main,section,header,footer{min-width:0;max-width:100%}
 dialog{overscroll-behavior:contain}
-header{background:var(--bg)}
+header{width:100%;max-width:none;background:var(--bg);padding-inline:max(5%,calc((100vw - 1260px)/2))}
 .hero{background:none}
 .hero-aside .asterisk{color:var(--gold)}
 .mark{color:var(--accent)}

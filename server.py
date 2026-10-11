@@ -19,7 +19,9 @@ ROOT = Path(__file__).resolve().parent
 PRIVATE_TEMPLATE_PATH = ROOT/'documentos-certificados/certificate-background.jpg'
 
 def access_page():
-    return '''<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Acessar XII — Honji</title><link rel="stylesheet" href="/access.css"></head><body><main class="gate"><div class="brand">HONJI</div><div class="eyebrow">Projeto protegido</div><h1>XII Certificados</h1><p>Revise participações, padronize registros e emita certificados do projeto XII.</p><p>Para continuar, entre com uma conta Honji que tenha acesso a este projeto.</p><div class="actions"><a class="primary" href="/auth/login">Entrar com Honji →</a><a href="https://gabriel.honji.com.br/#solicitar-acesso">Solicitar acesso</a></div><p class="note">Você será direcionado ao acesso Honji e voltará para o XII depois de entrar.</p></main></body></html>'''.encode()
+    return '''<!doctype html><html lang="pt-BR" data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Acessar XII — Honji</title><link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="/access.css"><script src="/access.js" defer></script></head><body><header><div class="brands"><a class="honji" href="https://gabriel.honji.com.br"><img src="/honji-symbol.svg" alt=""><strong>HONJI</strong></a><i></i><a class="xii" href="/acesso"><img src="/xii-icon.svg" alt=""><span>XII DE MARÇO<b>SECRETARIA DIGITAL</b></span></a></div><button id="theme" type="button" aria-label="Ativar tema escuro"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.7 15.4A8.3 8.3 0 0 1 8.6 4.3 8.5 8.5 0 1 0 19.7 15.4Z"/></svg></button></header><main><section class="intro"><div class="eyebrow">01 / PROJETO PROTEGIDO</div><h1>Reconhecimento,<br><em>no contexto certo.</em></h1><p>Revise participações, padronize registros e emita certificados do projeto XII.</p></section><section class="access-card"><div class="card-symbol"><img src="/xii-icon.svg" alt="Símbolo da XII"></div><span class="eyebrow">CONTA HONJI</span><h2>Entre para continuar.</h2><p>Use uma conta com acesso à Secretaria Digital da XII de Março.</p><div class="actions"><a class="primary" href="/auth/login">Entrar com Honji <span>→</span></a><a href="https://gabriel.honji.com.br/#solicitar-acesso">Solicitar acesso</a></div></section></main><footer><span>XII DE MARÇO · UTFPR / APUCARANA</span><span>DESENVOLVIDO POR <a href="https://github.com/gabrielhonji">gabriel.honji</a></span></footer></body></html>'''.encode()
+
+ACCESS_SCRIPT = b'''(()=>{const root=document.documentElement,button=document.querySelector("#theme"),cookie=document.cookie.split("; ").find(x=>x.startsWith("honji_theme="))?.split("=")[1],saved=cookie||localStorage.getItem("honji-theme"),set=t=>{root.dataset.theme=t;button.setAttribute("aria-label",`Ativar tema ${t==="light"?"escuro":"claro"}`);localStorage.setItem("honji-theme",t);document.cookie=`honji_theme=${t}; Domain=.honji.com.br; Path=/; Max-Age=31536000; SameSite=Lax; Secure`};set(saved==="dark"?"dark":"light");button.addEventListener("click",()=>set(root.dataset.theme==="light"?"dark":"light"));})();'''
 
 HOUR = 60 * 60
 ABSOLUTE_SESSION_SECONDS = 12 * HOUR
@@ -527,6 +529,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(access_page(), 'text/html; charset=utf-8')
         if raw_path == '/access.css':
             return self.reply((ROOT/'web/access.css').read_bytes(), 'text/css; charset=utf-8')
+        if raw_path == '/access.js':
+            return self.reply(ACCESS_SCRIPT, 'text/javascript; charset=utf-8')
         if raw_path == '/api/session':
             try:
                 _sid, session = self.server.bff.authorize(self, 'xii.certificates.access')

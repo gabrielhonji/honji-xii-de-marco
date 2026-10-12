@@ -15,6 +15,13 @@ from reportlab.lib.colors import white, HexColor
 from reportlab.lib.utils import ImageReader
 from pypdf import PdfReader, PdfWriter
 
+DEBUG_MODES = {'real','global_admin','caecomp_admin','events_director','events_member','products_member','xii_admin','xii_secretary_member','xii_sports_member'}
+DEBUG_NAMES = {'global_admin':'Administrador global','caecomp_admin':'Administração / Presidência CAECOMP','events_director':'Diretor de Eventos','events_member':'Membro de Eventos','products_member':'Membro de Produtos','xii_admin':'Administração / Presidência XII','xii_secretary_member':'Membro da Secretaria XII','xii_sports_member':'Membro de Esportes XII'}
+def normalize_debug_mode(mode):
+    return {'admin':'global_admin','member':'events_member'}.get(mode, mode if mode in DEBUG_MODES else 'real')
+def debug_capability(mode, action):
+    return normalize_debug_mode(mode) in {'global_admin','xii_admin','xii_secretary_member'} and action in {'xii.certificates.access','xii.certificates.issue'}
+
 ROOT = Path(__file__).resolve().parent
 PRIVATE_TEMPLATE_PATH = ROOT/'documentos-certificados/certificate-background.jpg'
 
@@ -69,9 +76,13 @@ class SessionStore:
             try: cur.execute('ALTER TABLE xii_sessions ADD COLUMN csrf_token VARCHAR(64) NOT NULL DEFAULT "" AFTER csrf_hash')
             except self.pymysql.err.OperationalError as error:
                 if error.args[0] != 1060: raise
-            try: cur.execute("ALTER TABLE xii_sessions ADD COLUMN debug_mode ENUM('real','admin','events_director','member') NOT NULL DEFAULT 'real'")
+            try: cur.execute("ALTER TABLE xii_sessions ADD COLUMN debug_mode VARCHAR(48) NOT NULL DEFAULT 'real'")
             except self.pymysql.err.OperationalError as error:
                 if error.args[0] != 1060: raise
+            cur.execute("SHOW COLUMNS FROM xii_sessions LIKE 'debug_mode'")
+            debug_column=cur.fetchone()
+            if str(debug_column[1]).lower().startswith('enum'):
+                cur.execute("ALTER TABLE xii_sessions MODIFY COLUMN debug_mode VARCHAR(48) NOT NULL DEFAULT 'real'")
             cur.execute('DELETE FROM xii_sessions WHERE expires_at < UNIX_TIMESTAMP()')
     @staticmethod
     def digest(value): return hashlib.sha256(value.encode()).hexdigest()
@@ -99,7 +110,7 @@ class SessionStore:
             if not subject or now > expires or now - activity >= IDLE_SESSION_SECONDS:
                 cur.execute('DELETE FROM xii_sessions WHERE session_hash=%s', (self.digest(sid),)); return None
             if touch: cur.execute('UPDATE xii_sessions SET last_activity_at=%s WHERE session_hash=%s', (now, self.digest(sid)))
-        return {'sub': subject, 'name': display_name or '', 'csrf_hash': csrf_hash, 'csrf_token': csrf_token, 'debug_mode': debug_mode}
+        return {'sub': subject, 'name': display_name or '', 'csrf_hash': csrf_hash, 'csrf_token': csrf_token, 'debug_mode': normalize_debug_mode(debug_mode)}
     def set_debug_mode(self, sid, mode):
         with self.connect().cursor() as cur:
             cur.execute('UPDATE xii_sessions SET debug_mode=%s WHERE session_hash=%s', (mode, self.digest(sid)))
@@ -201,7 +212,7 @@ class Bff:
             raise AuthError(503, 'O serviço central de autorização retornou uma resposta inválida.', 'authorization_invalid_response')
         if allowed is not True: raise AuthError(403, 'Seu acesso à XII não está liberado.', 'capability_denied')
         if debug_mode != 'real':
-            local = debug_mode == 'admin' and requested_action in {'xii.certificates.access', 'xii.certificates.issue'}
+            local = debug_capability(debug_mode, requested_action)
             if not local: raise AuthError(403, 'Este perfil não possui acesso ao gerador da XII.', 'debug_capability_denied')
         return sid, session
 
@@ -548,12 +559,12 @@ class Handler(BaseHTTPRequestHandler):
                     capabilities.append('xii.certificates.issue')
                 except AuthError as error:
                     if error.status != 403: raise
-                mode=session['debug_mode']; names={'admin':'Administração / Presidência','events_director':'Direção de Eventos','member':'Membro'}
+                mode=session['debug_mode']; names=DEBUG_NAMES
                 return self.reply({'user':{'id':session['sub'], 'name':names.get(mode,session['name'])}, 'capabilities':capabilities, 'csrfToken': session['csrf_token'], 'debugView':{'available':session['sub']==self.server.bff.env.get('HONJI_ADMIN_ID'),'mode':mode}})
             except AuthError as error:
                 _sid, session = self.server.bff.session(self)
                 if error.code=='debug_capability_denied' and session:
-                    names={'events_director':'Direção de Eventos','member':'Membro'}
+                    names=DEBUG_NAMES
                     return self.reply({'user':{'id':session['sub'],'name':names.get(session['debug_mode'],session['name'])},'capabilities':[],'csrfToken':session['csrf_token'],'debugView':{'available':True,'mode':session['debug_mode']}})
                 return self.reply_auth_error(error)
         if raw_path == '/':
@@ -618,7 +629,7 @@ class Handler(BaseHTTPRequestHandler):
                 expected_origin = public_origin or f'http://{host}'
                 if origin != expected_origin or not hmac.compare_digest(self.server.bff.store.digest(provided), session['csrf_hash']): raise AuthError(403, 'CSRF inválido.')
                 mode=payload.get('mode')
-                if mode not in {'real','admin','events_director','member'}: raise ValueError('Visualização inválida.')
+                if mode not in DEBUG_MODES: raise ValueError('Visualização inválida.')
                 self.server.bff.store.set_debug_mode(sid,mode)
                 return self.reply({'mode':mode})
             if self.path=='/api/analyze':

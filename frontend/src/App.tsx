@@ -386,9 +386,7 @@ export function App() {
         </section>
       </main>
       <Footer />
-      {session.debugView?.available && <aside className="debug-view-switcher" aria-label="Visualização de depuração"><span>Visualizar como</span><div>{([
-        ['real','Minha conta'],['admin','Admin / Presidência'],['events_director','Diretor Eventos'],['member','Membro'],
-      ] as [DebugMode,string][]).map(([mode,label])=><button type="button" key={mode} aria-pressed={session.debugView?.mode===mode} onClick={async()=>{await setDebugView(mode);location.reload();}}>{label}</button>)}</div></aside>}
+      {session.debugView?.available&&<aside className="debug-view-switcher"><label>Visualizar como<select aria-label="Perfil de visualização" style={{minHeight:44,maxWidth:'100%',padding:10,background:'var(--surface)',color:'var(--text)',border:'1px solid var(--line)'}} value={session.debugView.mode} onChange={async e=>{await setDebugView(e.target.value as DebugMode);location.reload();}}><optgroup label="Administração"><option value="real">Minha conta</option><option value="global_admin">Administrador global</option></optgroup><optgroup label="CAECOMP"><option value="caecomp_admin">Administração / Presidência</option><option value="events_director">Diretor de Eventos</option><option value="events_member">Membro de Eventos</option><option value="products_member">Membro de Produtos</option></optgroup><optgroup label="XII"><option value="xii_admin">Administração / Presidência</option><option value="xii_secretary_member">Membro da Secretaria</option><option value="xii_sports_member">Membro de Esportes</option></optgroup></select></label></aside>}
       {reviewDuplicates && <Duplicates records={records} duplicates={duplicates} busy={busy}
         onChoose={chooseDuplicate} onClose={() => setReviewDuplicates(false)} />}
       {current && (

@@ -67,7 +67,7 @@ def example(**changes):
 class ImportRegressionTest(unittest.TestCase):
     def test_access_gate_explains_project_login_and_request_path(self):
         page=access_page().decode()
-        self.assertIn('XII Certificados',page)
+        self.assertIn('XII DE MARÇO',page)
         self.assertIn('href="/auth/login"',page)
         self.assertIn('href="/access.css"',page)
         self.assertIn('https://gabriel.honji.com.br/#solicitar-acesso',page)

@@ -1,6 +1,6 @@
 let csrfToken = "";
 
-export type DebugMode = 'real' | 'admin' | 'events_director' | 'member';
+export type DebugMode = 'real'|'global_admin'|'caecomp_admin'|'events_director'|'events_member'|'products_member'|'xii_admin'|'xii_secretary_member'|'xii_sports_member';
 export type Session = { user: { id: string; name: string }; capabilities: string[]; csrfToken: string; debugView?: { available: boolean; mode: DebugMode } };
 
 export async function loadSession(): Promise<Session | null> {

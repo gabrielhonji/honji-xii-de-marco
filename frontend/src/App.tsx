@@ -52,12 +52,19 @@ export function App() {
   const lotVersion = useRef(0);
   const [session, setSession] = useState<Session | null>(null);
   const [sessionError, setSessionError] = useState("");
+  const [sessionAttempt,setSessionAttempt]=useState(0);
+  const [signingOut,setSigningOut]=useState(false),[logoutError,setLogoutError]=useState('');
+  const logoutPending=useRef(false);
   useEffect(() => {
-    loadSession().then((active) => {
-      if (!active) window.location.assign("/auth/login");
-      else setSession(active);
-    }).catch((error) => setSessionError(message(error)));
-  }, []);
+    let active=true;
+    setSessionError('');
+    loadSession().then((result) => {
+      if(!active)return;
+      if (!result) window.location.assign("/auth/login");
+      else setSession(result);
+    }).catch((error) => {if(active)setSessionError(message(error));});
+    return()=>{active=false;};
+  }, [sessionAttempt]);
   useEffect(() => {
     if (!notice) return;
     const timer = setTimeout(
@@ -305,16 +312,18 @@ export function App() {
       finish();
     }
   }
-  if (sessionError) return <main className="workspace"><p role="alert">{sessionError}</p></main>;
-  if (!session) return <main className="workspace" aria-busy="true" />;
+  if (!session) return <><Header theme={theme} toggle={toggle} user="" onLogout={()=>undefined}/><main className="workspace" aria-busy={!sessionError}><section><h1>{sessionError?'Não foi possível abrir o gerador.':'Preparando seu acesso.'}</h1>{sessionError?<><p role="alert">{sessionError}</p><button type="button" className="primary" onClick={()=>setSessionAttempt(value=>value+1)}>Tentar novamente</button><a className="secondary" href="/acesso">Voltar ao acesso Honji</a></>:<p role="status">Verificando sua sessão. Aguarde para continuar.</p>}</section></main><Footer/></>;
   return (
     <>
-      <Header theme={theme} toggle={toggle} user={session.user.name} onLogout={async () => {
-        const response = await logout();
-        if (response.ok) {
-          const body = (await response.json()) as { redirect: string };
+      <Header theme={theme} toggle={toggle} user={session.user.name} busy={signingOut} error={logoutError} onLogout={async () => {
+        if(logoutPending.current)return;
+        logoutPending.current=true;setSigningOut(true);setLogoutError('');
+        try {
+          const response = await logout();
+          const body = (await response.json()) as { redirect?: string };
+          if(!response.ok||!body.redirect)throw new Error();
           window.location.assign(body.redirect);
-        }
+        } catch {logoutPending.current=false;setSigningOut(false);setLogoutError('Não foi possível confirmar a saída. Tente novamente.');}
       }} />
       <main>
         <Hero />

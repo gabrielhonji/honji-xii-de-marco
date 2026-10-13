@@ -7,11 +7,15 @@ export function Header({
   toggle,
   user,
   onLogout,
+  busy=false,
+  error='',
 }: {
   theme: Theme;
   toggle: () => void;
   user: string;
   onLogout: () => void;
+  busy?:boolean;
+  error?:string;
 }) {
   const [accountOpen, setAccountOpen] = useState(false);
   const account = useRef<HTMLDivElement>(null);
@@ -65,10 +69,10 @@ export function Header({
             </span>
           </button>
         </Tooltip>
-        <div className="account-control" ref={account}>
+        {user&&<div className="account-control" ref={account}>
           <button className="account-avatar" type="button" aria-label={`Abrir conta de ${user || 'Conta Honji'}`} aria-expanded={accountOpen} onClick={() => setAccountOpen(value => !value)}>{initials}</button>
-          {accountOpen && <div className="account-panel"><a className="account-name" href="https://gabriel.honji.com.br/#perfil">{user || 'Conta Honji'}<span>Editar perfil</span></a><a href="https://gabriel.honji.com.br/#acesso">Área de acesso</a><button type="button" onClick={onLogout}>Sair</button></div>}
-        </div>
+          {accountOpen && <div className="account-panel"><a className="account-name" href="https://gabriel.honji.com.br/#perfil">{user}<span>Editar perfil</span></a><a href="https://gabriel.honji.com.br/#acesso">Minha conta</a><button type="button" disabled={busy} onClick={onLogout}>{busy?'Saindo…':'Sair'}</button>{error&&<p role="alert">{error}</p>}</div>}
+        </div>}
       </div>
     </header>
   );

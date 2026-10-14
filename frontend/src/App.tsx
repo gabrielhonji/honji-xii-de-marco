@@ -80,6 +80,8 @@ export function App() {
     },
     [],
   );
+  const toastRef=useRef<HTMLDivElement>(null);
+  useEffect(()=>{if(notice&&toastRef.current&&typeof toastRef.current.showPopover==='function')toastRef.current.showPopover();},[notice]);
   const notify = (text: string, action?: () => void) =>
     setNotice({ text, action });
   function invalidate() {
@@ -451,7 +453,7 @@ export function App() {
         </Dialog>
       )}
       {notice && (
-        <div id="toast" role="status">
+        <div ref={toastRef} popover="manual" id="toast" role="status" aria-live="polite" aria-atomic="true">
           {notice.text}
           {notice.action && (
             <button
